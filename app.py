@@ -14,12 +14,15 @@ from langchain_ollama.llms import OllamaLLM
 from functions import (
     Oraculo,
     InformationRetrieval,
+    PromptEngineering,
     PDFAssistant,
     SoftwareDevelopment,
     DataScience,
     PlanAndSolve,
     reload_active_models,
-    settings
+    settings,
+    prompt_settings,
+    prompt_informations
 )
 
 st.set_page_config(
@@ -62,6 +65,29 @@ if role_filter == "Oráculo":
         temperature_filter, 
         st.session_state["model_name"]
         )
+if role_filter == "Prompt Engineering":
+    prompt_settings_button = st.sidebar.button(
+        label = "Prompt settings",
+        use_container_width = True
+    )
+    if prompt_settings_button:
+        prompt_settings()
+    try:
+        PROMPT_NAME = st.session_state["PROMPT_NAME"]
+        PROMPT = st.session_state["PROMPT"]
+    except:
+        st.sidebar.info("No prompt loaded from LangChain Hub.")
+        st.stop()
+    prompt_informations_button = st.sidebar.button(
+        label = "Prompt informations",
+        use_container_width = True
+    )
+    if prompt_informations_button:
+        prompt_informations(PROMPT_NAME, PROMPT)
+    role = PromptEngineering(PROMPT)
+    model = role.load_model(
+        st.session_state["model_name"], 
+        temperature_filter)
 elif role_filter == "Information Retrieval":
     tools_dict = {
         "Arxiv": "arxiv",
@@ -209,5 +235,8 @@ if prompt := st.chat_input():
         try:
             response["text"] = response["response"]
         except:
-            pass
+            try:
+                response["text"] = response["output"]
+            except:
+                pass
         st.markdown(response["text"])

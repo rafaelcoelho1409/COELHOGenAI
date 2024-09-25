@@ -1,6 +1,7 @@
 import streamlit as st
 import ollama
 import os
+import re
 from pandasai import SmartDataframe
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from langchain_community.document_loaders import UnstructuredFileLoader
@@ -33,6 +34,8 @@ from langchain.memory.buffer import ConversationBufferMemory
 from langchain.chains import LLMChain
 from langchain.chains.conversation.base import ConversationChain
 from langchain.tools.retriever import create_retriever_tool
+from langchain import hub
+
 
 def reload_active_models():
     active_models_container = st.sidebar.container()
@@ -58,7 +61,8 @@ def settings():
                 #"PDF Assistant",
                 #"Software Development",
                 "Data Science",
-                "Plan And Solve"
+                "Plan And Solve",
+                #"Prompt Engineering"
             ],
         )
         if ollama.ps()["models"] != []:
@@ -98,6 +102,44 @@ def settings():
             st.session_state["temperature_filter"] = temperature_filter
             st.rerun()
 
+@st.dialog("Prompt settings")
+def prompt_settings():
+    with st.form("LangChain Hub"):
+        PROMPT_NAME = st.text_input(
+            label = "Prompt name (LangChain Hub)"
+        )
+        prompt_name_submit = st.form_submit_button(
+            label = "Run prompt",
+            use_container_width = True
+        )
+        st.divider()
+        st.link_button(
+            "LangChain Hub",
+            "https://smith.langchain.com/hub",
+            use_container_width = True
+        )
+        if prompt_name_submit:
+            try:
+                PROMPT = hub.pull(PROMPT_NAME)
+                st.session_state["PROMPT_NAME"] = PROMPT_NAME
+                st.session_state["PROMPT"] = PROMPT
+            except:
+                st.error("Invalid prompt name.")
+                st.stop()
+            st.rerun()
+
+
+@st.dialog("Prompt informations")
+def prompt_informations(PROMPT_NAME, PROMPT):
+    st.markdown(f"**Prompt name:** {PROMPT_NAME}")
+    st.divider()
+    st.markdown("**Prompt template:**")
+    prompt_description = ""
+    prompt_agent = ["SYSTEM", "HUMAN"]
+    for i in range(len(PROMPT.messages)):
+        prompt_description += f"{prompt_agent[i]}) "
+        prompt_description += PROMPT.messages[i].prompt.template
+    st.markdown(prompt_description)
 
 
 class Oraculo:
@@ -126,15 +168,28 @@ class Oraculo:
             verbose = True,
             memory = self.memory
         )
-        #if tools != []:
-        #    model = initialize_agent(
-        #        tools = load_tools(tools, allow_dangerous_tools = True), 
-        #        llm = conversation,  # Pass the LLM chain with the prompt
-        #        agent = "zero-shot-react-description",
-        #        handle_parsing_errors = True
-        #    )
-        #else:
-        #    model = conversation
+        return conversation
+    
+
+class PromptEngineering:
+    def __init__(self, PROMPT):
+        self.history = StreamlitChatMessageHistory(key = "chat_history")
+        self.prompt = PROMPT
+        self.memory = ConversationBufferMemory(
+            #memory_key = "chat_history", 
+            return_messages = True,
+            chat_memory = self.history)
+    def load_model(self, models_filter, temperature_filter):
+        self.chain = self.prompt | OllamaLLM(
+            model = models_filter,
+            temperature = temperature_filter
+        )
+        conversation = LLMChain(
+            llm = self.chain,
+            prompt = self.prompt,
+            verbose = True,
+            memory = self.memory
+        )
         return conversation
 
 
