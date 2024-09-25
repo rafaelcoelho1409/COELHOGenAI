@@ -8,7 +8,12 @@ from langchain_community.document_loaders import UnstructuredFileLoader
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.prompts.prompt import PromptTemplate
-from langchain_core.prompts.chat import ChatPromptTemplate
+from langchain_core.prompts.chat import (
+    ChatPromptTemplate,
+    HumanMessagePromptTemplate,
+    SystemMessagePromptTemplate
+)
+from langchain_core.prompts.string import StringPromptTemplate
 from langchain_experimental.agents.agent_toolkits.python.base import create_python_agent
 from langchain_experimental.agents.agent_toolkits.pandas.base import create_pandas_dataframe_agent
 from langchain_experimental.tools.python.tool import PythonREPLTool
@@ -38,7 +43,7 @@ from langchain import hub
 
 
 def reload_active_models():
-    active_models_container = st.sidebar.container()
+    active_models_container = st.container()
     active_models_text = "## Active models (Ollama)\n"
     if ollama.ps()["models"] != []:
         for model_name in ollama.ps()["models"]:
@@ -62,7 +67,7 @@ def settings():
                 #"Software Development",
                 "Data Science",
                 "Plan And Solve",
-                #"Prompt Engineering"
+                "Prompt Engineering"
             ],
         )
         if ollama.ps()["models"] != []:
@@ -128,7 +133,6 @@ def prompt_settings():
                 st.stop()
             st.rerun()
 
-
 @st.dialog("Prompt informations")
 def prompt_informations(PROMPT_NAME, PROMPT):
     st.markdown(f"**Prompt name:** {PROMPT_NAME}")
@@ -136,10 +140,23 @@ def prompt_informations(PROMPT_NAME, PROMPT):
     st.markdown("**Prompt template:**")
     prompt_description = ""
     prompt_agent = ["SYSTEM", "HUMAN"]
-    for i in range(len(PROMPT.messages)):
-        prompt_description += f"{prompt_agent[i]}) "
-        prompt_description += PROMPT.messages[i].prompt.template
+    if type(PROMPT) == ChatPromptTemplate:
+        for i in range(len(PROMPT.messages)):
+            prompt_description += f"({prompt_agent[i]})\n\n"
+            prompt_description += PROMPT.messages[i].prompt.template
+            prompt_description += "\n\n"
+    elif type(PROMPT) == PromptTemplate:
+        st.write(PROMPT.template)
     st.markdown(prompt_description)
+
+
+# define a custom PromptTemplate that supports your new variables
+class CustomPromptTemplate(StringPromptTemplate):
+    my_info: str
+
+    def format(self, **kwargs) -> str:
+        kwargs['my_info'] = self.my_info
+        return self.template.format(**kwargs)
 
 
 class Oraculo:
@@ -179,13 +196,27 @@ class PromptEngineering:
             #memory_key = "chat_history", 
             return_messages = True,
             chat_memory = self.history)
+        if type(PROMPT) == ChatPromptTemplate:
+            self.human_input_variables = [
+                x.input_variables for x in PROMPT.messages 
+                if type(x) == HumanMessagePromptTemplate]
+            self.system_input_variables = [
+                x.input_variables for x in PROMPT.messages 
+                if type(x) == SystemMessagePromptTemplate]
+            self.input_variables = self.system_input_variables[0] + self.human_input_variables[0]
+        elif type(PROMPT) == PromptTemplate:
+            self.input_variables = PROMPT.input_variables
     def load_model(self, models_filter, temperature_filter):
-        self.chain = self.prompt | OllamaLLM(
+        self.llm = ChatOllama(
             model = models_filter,
             temperature = temperature_filter
         )
+        #self.prompt = CustomPromptTemplate(
+        #    input_variables = self.input_variables,
+        #    template = self.prompt
+        #)
         conversation = LLMChain(
-            llm = self.chain,
+            llm = self.llm,
             prompt = self.prompt,
             verbose = True,
             memory = self.memory

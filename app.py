@@ -1,15 +1,12 @@
 import streamlit as st
 from streamlit_extras.grid import grid
-import ollama
 import pandas as pd
-from pandasai import SmartDataframe
-from langchain_community.chat_message_histories import StreamlitChatMessageHistory
+import json
 from langchain_community.callbacks.streamlit import (
     StreamlitCallbackHandler,
 )
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_ollama.chat_models import ChatOllama
 from langchain_ollama.llms import OllamaLLM
 from functions import (
     Oraculo,
@@ -53,9 +50,11 @@ except:
     st.stop()
 role_filter = st.session_state["role_filter"]
 temperature_filter = st.session_state["temperature_filter"]
-st.sidebar.markdown(f"**Role:** {role_filter}")
-st.sidebar.markdown(f"**Model:** {models_filter}")
-st.sidebar.markdown(f"**Temperature:** {temperature_filter}")
+with st.sidebar.expander("**Informations**", expanded = True):
+    st.markdown(f"**Role:** {role_filter}")
+    st.markdown(f"**Model:** {models_filter}")
+    st.markdown(f"**Temperature:** {temperature_filter}")
+    reload_active_models()
 st.sidebar.divider()
 
 
@@ -76,7 +75,7 @@ if role_filter == "Prompt Engineering":
         PROMPT_NAME = st.session_state["PROMPT_NAME"]
         PROMPT = st.session_state["PROMPT"]
     except:
-        st.sidebar.info("No prompt loaded from LangChain Hub.")
+        st.info("Load a prompt from LangChain Hub to start.")
         st.stop()
     prompt_informations_button = st.sidebar.button(
         label = "Prompt informations",
@@ -190,11 +189,18 @@ elif role_filter == "Plan And Solve":
     role = PlanAndSolve()
     model = role.load_model(tools, models_filter, temperature_filter)
 
-reload_active_models()
-
 try:
-    if role_filter == "Data Science" and st.session_state["ds_framework"] == "PandasAI":
+    if (
+        role_filter == "Data Science" 
+        and st.session_state["ds_framework"] == "PandasAI"):
         pass
+    elif role_filter == "Prompt Engineering":
+        model = RunnableWithMessageHistory(
+            model,
+            lambda session_id: role.history,  # Always return the instance created earlier
+            input_messages_key = role.input_variables,
+            history_messages_key = "chat_history",
+        )        
     else:
         model = RunnableWithMessageHistory(
             model,
@@ -211,32 +217,90 @@ for msg in role.history.messages:
     st.chat_message(msg.type).write(msg.content)
 if "role" not in st.session_state:
     st.session_state["role"] = role
-#if "model" not in st.session_state:
-#    st.session_state["model"] = model
 if "model_memory" not in st.session_state:
     st.session_state["model_memory"] = role.memory
 
-if prompt := st.chat_input():
-    #reload_active_models()
-    st.chat_message("human").markdown(prompt)
-    # As usual, new messages are added to StreamlitChatMessageHistory when the Chain is called.
-    with st.chat_message("assistant"):
-        st_callback = StreamlitCallbackHandler(st.container())
-        config = {"configurable": {"session_id": "any"}, "callbacks": [st_callback]}
-        if role_filter == "PDF Assistant":
-            retrieval_chain = st.session_state["role"].process_user_input(prompt)
-            model = st.session_state["role"].load_model(retrieval_chain)
-        elif role_filter == "Data Science" and st.session_state["ds_framework"] == "PandasAI":
-            response = model.chat(prompt)
-        else:
+
+if role_filter == "Prompt Engineering":
+    st.sidebar.markdown(f"**Prompt name:** {PROMPT_NAME}")
+    #create a memory persistence in an external JSON
+    try:
+        with open("input_variables_temp.json", "r") as file:
+            input_var_temp = json.load(file)
+    except FileNotFoundError:
+        data = {}
+        with open("input_variables_temp.json", "w") as file:
+            json.dump(data, file)
+    with open("input_variables_temp.json", "r") as file:
+        data_temp = json.load(file)
+    if type(PROMPT) == ChatPromptTemplate:
+        #SYSTEM INPUT VARIABLES
+        for i, input_variable in enumerate(role.system_input_variables[0]):
+            globals()[f"prompt_{input_variable}"] = st.sidebar.text_area(
+                label = input_variable
+            )
+            if globals()[f"prompt_{input_variable}"] is not None:
+                data_temp[input_variable] = globals()[f"prompt_{input_variable}"]
+                with open("input_variables_temp.json", "w") as file:
+                    json.dump(data_temp, file)
+        #HUMAN INPUT VARIABLES
+        for i, input_variable in enumerate(role.human_input_variables[0]):
+            globals()[f"prompt_{input_variable}"] = st.chat_input(
+                placeholder = input_variable
+            )
+            if globals()[f"prompt_{input_variable}"] is not None:
+                data_temp[input_variable] = globals()[f"prompt_{input_variable}"]
+                with open("input_variables_temp.json", "w") as file:
+                    json.dump(data_temp, file)
+    elif type(PROMPT) == PromptTemplate:
+        for i, input_variable in enumerate(role.input_variables):
+            globals()[f"prompt_{input_variable}"] = st.chat_input(
+                placeholder = input_variable
+            )
+            if globals()[f"prompt_{input_variable}"] is not None:
+                data_temp[input_variable] = globals()[f"prompt_{input_variable}"]
+                with open("input_variables_temp.json", "w") as file:
+                    json.dump(data_temp, file)
+    #read stored data
+    with open("input_variables_temp.json", "r") as file:
+        data_temp = json.load(file)
+    if sorted(list(data_temp.keys())) == sorted(role.input_variables):
+        prompt_set = ""
+        for key in role.input_variables:
+            prompt_set += f"**{key}:** {data_temp[key]}\n\n"
+        st.chat_message("human").markdown(prompt_set)
+        with st.chat_message("assistant"):
+            st_callback = StreamlitCallbackHandler(st.container())
+            config = {"configurable": {"session_id": "any"}, "callbacks": [st_callback]}
+            #deleting temporary data
+            with open("input_variables_temp.json", "w") as file:
+                json.dump({}, file)
             response = model.invoke(
-                {"input": prompt}, 
-                config)
-        try:
-            response["text"] = response["response"]
-        except:
+                data_temp,
+                config
+            )
+else:
+    if prompt := st.chat_input():
+        #reload_active_models()
+        st.chat_message("human").markdown(prompt)
+        # As usual, new messages are added to StreamlitChatMessageHistory when the Chain is called.
+        with st.chat_message("assistant"):
+            st_callback = StreamlitCallbackHandler(st.container())
+            config = {"configurable": {"session_id": "any"}, "callbacks": [st_callback]}
+            if role_filter == "PDF Assistant":
+                retrieval_chain = st.session_state["role"].process_user_input(prompt)
+                model = st.session_state["role"].load_model(retrieval_chain)
+            elif role_filter == "Data Science" and st.session_state["ds_framework"] == "PandasAI":
+                response = model.chat(prompt)
+            else:
+                response = model.invoke(
+                    {"input": prompt}, 
+                    config)
             try:
-                response["text"] = response["output"]
+                response["text"] = response["response"]
             except:
-                pass
-        st.markdown(response["text"])
+                try:
+                    response["text"] = response["output"]
+                except:
+                    pass
+            st.markdown(response["text"])

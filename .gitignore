@@ -3,3 +3,4 @@ cache/
 oraculo_env/
 pandasai.log
 test*.py
+input_variables_temp.json
