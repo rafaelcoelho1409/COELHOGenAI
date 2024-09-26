@@ -60,18 +60,27 @@ def settings():
     with st.form("Settings"):
         models_options = sorted(
             [x["name"] for x in ollama.list()["models"]])
-        role_filter = st.selectbox(
-            label = "Role",
-            options = [
-                "Oráculo",
-                "Information Retrieval",
-                #"PDF Assistant",
-                #"Software Development",
-                "Data Science",
-                "Plan And Solve",
-                "Prompt Engineering"
-            ],
-        )
+        role_options = [
+            "Oráculo",
+            "Information Retrieval",
+            #"PDF Assistant",
+            #"Software Development",
+            "Data Science",
+            "Plan And Solve",
+            "Prompt Engineering"
+        ]
+        try:
+            role_filter = st.selectbox(
+                label = "Role",
+                options = role_options,
+                index = role_options.index(st.session_state["role_filter"])
+            )
+        except:
+            role_filter = st.selectbox(
+                label = "Role",
+                options = role_options
+            )
+        st.session_state["role_filter"] = role_filter
         if ollama.ps()["models"] != []:
             active_models = [x["name"] for x in ollama.ps()["models"]]
             models_filter = st.selectbox(
@@ -319,19 +328,19 @@ class PlanAndSolve:
             #memory_key = "chat_history", 
             return_messages = True,
             chat_memory = self.history)
-    def load_model(self, tool_names, models_filter, temperature_filter):
+    def load_model(self, models_filter, temperature_filter):
         llm = OllamaLLM(
             model = models_filter,
             temperature = temperature_filter)
-        tools = load_tools(
-            tool_names = tool_names,
-            llm = llm,
-            allow_dangerous_tools = True
-        )
+        #tools = load_tools(
+        #    tool_names = tool_names,
+        #    llm = llm,
+        #    allow_dangerous_tools = True
+        #)
         planner = load_chat_planner(llm)
         executor = load_agent_executor(
             llm,
-            tools,
+            [PythonREPLTool(), ShellTool()],
             verbose = True
         )
         return PlanAndExecute(

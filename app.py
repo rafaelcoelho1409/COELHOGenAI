@@ -168,27 +168,8 @@ elif role_filter == "Data Science":
             role = DataScience(ds_framework)
             model = role.load_model(df, models_filter, temperature_filter)
 elif role_filter == "Plan And Solve":
-    tools_dict = {
-        "Arxiv": "arxiv",
-        "DuckDuckGo": "ddg-search",
-        "LLM Math": "llm-math",
-        "PubMed": "pubmed",
-        "Requests": "requests_all",
-        #"Wikidata": "wikidata",
-        "Wikipedia": "wikipedia",
-        #"Yahoo Finance": "yfinance",
-        #"Stack Exchange": "stackexchange"
-    }
-    tools_filter = st.sidebar.multiselect(
-        label = "Tools",
-        options = tools_dict.keys(),
-    )
-    tools = [tools_dict[tool_name] for tool_name in tools_filter]
-    st.sidebar.markdown(f"**Tools:** {', '.join(tools_filter)}")
-    st.session_state["tools_filter"] = tools_filter
-    st.session_state["tools"] = tools
     role = PlanAndSolve()
-    model = role.load_model(tools, models_filter, temperature_filter)
+    model = role.load_model(models_filter, temperature_filter)
 
 try:
     if (
@@ -294,8 +275,8 @@ if role_filter == "Prompt Engineering":
                     data_temp,
                     config
                 )
-            except ValueError:
-                st.error("Prompt not supported for Ollama models.")
+            except:
+                pass
 else:
     if prompt := st.chat_input():
         #reload_active_models()
@@ -310,9 +291,12 @@ else:
             elif role_filter == "Data Science" and st.session_state["ds_framework"] == "PandasAI":
                 response = model.chat(prompt)
             else:
-                response = model.invoke(
-                    {"input": prompt}, 
-                    config)
+                try:
+                    response = model.invoke(
+                        {"input": prompt}, 
+                        config)
+                except:
+                    pass
             try:
                 response["text"] = response["response"]
             except:
