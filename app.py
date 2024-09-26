@@ -6,6 +6,7 @@ from langchain_community.callbacks.streamlit import (
     StreamlitCallbackHandler,
 )
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_core.prompts.structured import StructuredPrompt
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_ollama.llms import OllamaLLM
 from functions import (
@@ -224,6 +225,8 @@ if "model_memory" not in st.session_state:
 if role_filter == "Prompt Engineering":
     st.sidebar.markdown(f"**Prompt name:** {PROMPT_NAME}")
     #create a memory persistence in an external JSON
+    #All code below creates a persistent memory in JSON that gathers all
+    #input variables and pass it as argument to model.invoke() method.
     try:
         with open("input_variables_temp.json", "r") as file:
             input_var_temp = json.load(file)
@@ -233,25 +236,29 @@ if role_filter == "Prompt Engineering":
             json.dump(data, file)
     with open("input_variables_temp.json", "r") as file:
         data_temp = json.load(file)
-    if type(PROMPT) == ChatPromptTemplate:
+    if type(PROMPT) in [ChatPromptTemplate, StructuredPrompt]:
         #SYSTEM INPUT VARIABLES
-        for i, input_variable in enumerate(role.system_input_variables[0]):
-            globals()[f"prompt_{input_variable}"] = st.sidebar.text_area(
-                label = input_variable
-            )
-            if globals()[f"prompt_{input_variable}"] is not None:
-                data_temp[input_variable] = globals()[f"prompt_{input_variable}"]
-                with open("input_variables_temp.json", "w") as file:
-                    json.dump(data_temp, file)
+        if role.system_input_variables != []:
+            for i, input_variable in enumerate(role.system_input_variables[0]):
+                globals()[f"prompt_{input_variable}"] = st.sidebar.text_area(
+                    label = input_variable
+                )
+                if globals()[f"prompt_{input_variable}"] is not None:
+                    data_temp[input_variable] = globals()[f"prompt_{input_variable}"]
+                    with open("input_variables_temp.json", "w") as file:
+                        json.dump(data_temp, file)
         #HUMAN INPUT VARIABLES
-        for i, input_variable in enumerate(role.human_input_variables[0]):
-            globals()[f"prompt_{input_variable}"] = st.chat_input(
-                placeholder = input_variable
-            )
-            if globals()[f"prompt_{input_variable}"] is not None:
-                data_temp[input_variable] = globals()[f"prompt_{input_variable}"]
-                with open("input_variables_temp.json", "w") as file:
-                    json.dump(data_temp, file)
+        if role.human_input_variables != []:
+            input_variable_info = ""
+            for i, input_variable in enumerate(role.human_input_variables[0]):
+                globals()[f"prompt_{input_variable}"] = st.chat_input(
+                    placeholder = input_variable
+                )
+                if globals()[f"prompt_{input_variable}"] is not None:
+                    data_temp[input_variable] = globals()[f"prompt_{input_variable}"]
+                    input_variable_info += f"**{input_variable}:** {data_temp[input_variable]}"
+                    with open("input_variables_temp.json", "w") as file:
+                        json.dump(data_temp, file)
     elif type(PROMPT) == PromptTemplate:
         for i, input_variable in enumerate(role.input_variables):
             globals()[f"prompt_{input_variable}"] = st.chat_input(
@@ -264,6 +271,13 @@ if role_filter == "Prompt Engineering":
     #read stored data
     with open("input_variables_temp.json", "r") as file:
         data_temp = json.load(file)
+    prompt_info = ""
+    for key in role.input_variables:
+        try:
+            prompt_info += f"**{key}:** {data_temp[key]}\n\n"
+        except:
+            pass
+    st.info(prompt_info)
     if sorted(list(data_temp.keys())) == sorted(role.input_variables):
         prompt_set = ""
         for key in role.input_variables:
@@ -275,10 +289,13 @@ if role_filter == "Prompt Engineering":
             #deleting temporary data
             with open("input_variables_temp.json", "w") as file:
                 json.dump({}, file)
-            response = model.invoke(
-                data_temp,
-                config
-            )
+            try:
+                response = model.invoke(
+                    data_temp,
+                    config
+                )
+            except ValueError:
+                st.error("Prompt not supported for Ollama models.")
 else:
     if prompt := st.chat_input():
         #reload_active_models()
@@ -302,5 +319,7 @@ else:
                 try:
                     response["text"] = response["output"]
                 except:
-                    pass
-            st.markdown(response["text"])
+                    try:
+                        st.markdown(response["text"])
+                    except:
+                        pass

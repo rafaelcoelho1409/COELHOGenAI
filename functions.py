@@ -8,6 +8,7 @@ from langchain_community.document_loaders import UnstructuredFileLoader
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.prompts.prompt import PromptTemplate
+from langchain_core.prompts.structured import StructuredPrompt
 from langchain_core.prompts.chat import (
     ChatPromptTemplate,
     HumanMessagePromptTemplate,
@@ -22,6 +23,7 @@ from langchain_experimental.plan_and_execute import (
     load_agent_executor,
     PlanAndExecute
 )
+#from langchain_experimental.llms.ollama_functions import OllamaFunctions
 from langchain_community.tools import ShellTool
 from langchain_ollama.chat_models import ChatOllama
 from langchain_ollama.llms import OllamaLLM
@@ -140,23 +142,17 @@ def prompt_informations(PROMPT_NAME, PROMPT):
     st.markdown("**Prompt template:**")
     prompt_description = ""
     prompt_agent = ["SYSTEM", "HUMAN"]
-    if type(PROMPT) == ChatPromptTemplate:
+    if type(PROMPT) in [ChatPromptTemplate, StructuredPrompt]:
         for i in range(len(PROMPT.messages)):
             prompt_description += f"({prompt_agent[i]})\n\n"
-            prompt_description += PROMPT.messages[i].prompt.template
+            try:
+                prompt_description += PROMPT.messages[i].prompt.template
+            except:
+                prompt_description += PROMPT.messages[i].content
             prompt_description += "\n\n"
     elif type(PROMPT) == PromptTemplate:
         st.write(PROMPT.template)
     st.markdown(prompt_description)
-
-
-# define a custom PromptTemplate that supports your new variables
-class CustomPromptTemplate(StringPromptTemplate):
-    my_info: str
-
-    def format(self, **kwargs) -> str:
-        kwargs['my_info'] = self.my_info
-        return self.template.format(**kwargs)
 
 
 class Oraculo:
@@ -196,14 +192,19 @@ class PromptEngineering:
             #memory_key = "chat_history", 
             return_messages = True,
             chat_memory = self.history)
-        if type(PROMPT) == ChatPromptTemplate:
+        if type(PROMPT) in [ChatPromptTemplate, StructuredPrompt]:
             self.human_input_variables = [
                 x.input_variables for x in PROMPT.messages 
                 if type(x) == HumanMessagePromptTemplate]
             self.system_input_variables = [
                 x.input_variables for x in PROMPT.messages 
                 if type(x) == SystemMessagePromptTemplate]
-            self.input_variables = self.system_input_variables[0] + self.human_input_variables[0]
+            if self.system_input_variables == []:
+                self.input_variables = self.human_input_variables[0]
+            elif self.human_input_variables == []:
+                self.input_variables = self.system_input_variables[0]
+            else:
+                self.input_variables = self.system_input_variables[0] + self.human_input_variables[0]
         elif type(PROMPT) == PromptTemplate:
             self.input_variables = PROMPT.input_variables
     def load_model(self, models_filter, temperature_filter):
@@ -211,10 +212,6 @@ class PromptEngineering:
             model = models_filter,
             temperature = temperature_filter
         )
-        #self.prompt = CustomPromptTemplate(
-        #    input_variables = self.input_variables,
-        #    template = self.prompt
-        #)
         conversation = LLMChain(
             llm = self.llm,
             prompt = self.prompt,
