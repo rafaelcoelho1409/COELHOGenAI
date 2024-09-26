@@ -10,7 +10,7 @@ from langchain_core.prompts.structured import StructuredPrompt
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_ollama.llms import OllamaLLM
 from functions import (
-    Oraculo,
+    Assistant,
     InformationRetrieval,
     PromptEngineering,
     PDFAssistant,
@@ -20,11 +20,12 @@ from functions import (
     reload_active_models,
     settings,
     prompt_settings,
-    prompt_informations
+    prompt_informations,
+    image_border_radius
 )
 
 st.set_page_config(
-    page_title = "Oráculo",
+    page_title = "COELHO GenAI",
     layout = "wide"
 )
 
@@ -35,7 +36,7 @@ st.set_page_config(
 #container1.caption("Author: Rafael Silva Coelho")
 
 #FILTERS
-st.sidebar.title("$$\\Large{\\textbf{ORÁCULO}}$$")
+st.sidebar.title("$$\\textbf{COELHO GenAI}$$")
 st.sidebar.caption("Author: Rafael Silva Coelho")
 settings_button = st.sidebar.button(
     label = "Settings",
@@ -47,7 +48,10 @@ if settings_button:
 try:
     models_filter = st.session_state["model_name"]
 except:
-    st.info("Choose options in settings and click in 'Run model' button to start using Oráculo.")
+    st.info("Choose options in settings and click in 'Run model' button to start using COELHO GenAI.")
+    grid_logo = grid([0.15, 0.7, 0.15], vertical_align = True)
+    grid_logo.container()
+    image_border_radius("assets/coelho_genai_logo.png", 20, 100, 100, grid_logo)
     st.stop()
 role_filter = st.session_state["role_filter"]
 temperature_filter = st.session_state["temperature_filter"]
@@ -59,8 +63,8 @@ with st.sidebar.expander("**Informations**", expanded = True):
 st.sidebar.divider()
 
 
-if role_filter == "Oráculo":
-    role = Oraculo()
+if role_filter == "Assistant":
+    role = Assistant()
     model = role.load_model(
         temperature_filter, 
         st.session_state["model_name"]
@@ -90,7 +94,7 @@ if role_filter == "Prompt Engineering":
         temperature_filter)
 elif role_filter == "Information Retrieval":
     tools_dict = {
-        "Arxiv": "arxiv",
+        #"Arxiv": "arxiv",
         "DuckDuckGo": "ddg-search",
         "LLM Math": "llm-math",
         "PubMed": "pubmed",
@@ -290,20 +294,29 @@ else:
                 model = st.session_state["role"].load_model(retrieval_chain)
             elif role_filter == "Data Science" and st.session_state["ds_framework"] == "PandasAI":
                 response = model.chat(prompt)
-            else:
-                try:
-                    response = model.invoke(
-                        {"input": prompt}, 
-                        config)
+                try:    
+                    st.dataframe(response)
                 except:
-                    pass
+                    st.write(response)
+                st.stop()
+            else:
+                response = model.invoke(
+                    {"input": prompt}, 
+                    config)
+            #response
             try:
                 response["text"] = response["response"]
             except:
                 try:
                     response["text"] = response["output"]
                 except:
+                    pass
                     try:
-                        st.markdown(response["text"])
+                        st.write(response["text"])
                     except:
-                        pass
+                        try:
+                            st.write(response)
+                        except:
+                            pass
+                        #st.error("Error")
+            #st.markdown(response["text"])

@@ -2,6 +2,7 @@ import streamlit as st
 import ollama
 import os
 import re
+import base64
 from pandasai import SmartDataframe
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from langchain_community.document_loaders import UnstructuredFileLoader
@@ -61,10 +62,10 @@ def settings():
         models_options = sorted(
             [x["name"] for x in ollama.list()["models"]])
         role_options = [
-            "Oráculo",
+            "Assistant",
             "Information Retrieval",
             #"PDF Assistant",
-            #"Software Development",
+            "Software Development",
             "Data Science",
             "Plan And Solve",
             "Prompt Engineering"
@@ -163,8 +164,28 @@ def prompt_informations(PROMPT_NAME, PROMPT):
         st.write(PROMPT.template)
     st.markdown(prompt_description)
 
+def image_border_radius(image_path, border_radius, width, height, page_object = None, is_html = False):
+    if is_html == False:
+        with open(image_path, "rb") as img_file:
+            img_base64 = base64.b64encode(img_file.read()).decode()
+        # Create HTML string with the image
+        img_html = f'<img src="data:image/jpeg;base64,{img_base64}" style="border-radius: {border_radius}px; width: {width}%; height: {height}%">'
+        # Display the HTML string in Streamlit
+        if page_object == None:
+            st.markdown(img_html, unsafe_allow_html=True)
+        else:
+            page_object.markdown(img_html, unsafe_allow_html=True)
+    else:
+        # Create HTML string with the image
+        img_html = f'<img src="{image_path}" style="border-radius: {border_radius}px; width: 300px;">'
+        # Display the HTML string in Streamlit
+        if page_object == None:
+            st.markdown(img_html, unsafe_allow_html=True)
+        else:
+            page_object.markdown(img_html, unsafe_allow_html=True)
 
-class Oraculo:
+
+class Assistant:
     def __init__(self):
         self.history = StreamlitChatMessageHistory(key = "chat_history")
         self.prompt_template = """
@@ -253,7 +274,8 @@ class InformationRetrieval:
                 llm = llm,
                 agent = AgentType.ZERO_SHOT_REACT_DESCRIPTION,
                 verbose = True,
-                handle_parsing_errors = True
+                handle_parsing_errors = True,
+                max_iterations = 3
             )
         else:
             st.info("Choose at least one search engine tool.")
@@ -270,14 +292,14 @@ class SoftwareDevelopment:
         llm = OllamaLLM(
             model = models_filter,
             temperature = temperature_filter)
-        conversation = ConversationChain(
-            llm = llm,
-            #prompt = self.prompt,
-            verbose = True,
-            memory = self.memory
-        )
+        #conversation = ConversationChain(
+        #    llm = llm,
+        #    #prompt = self.prompt,
+        #    verbose = True,
+        #    memory = self.memory
+        #)
         return initialize_agent(
-            llm = conversation,
+            llm = llm,
             tools = [
                 PythonREPLTool(),
                 ShellTool()],
@@ -293,6 +315,12 @@ class DataScience:
             return_messages = True,
             chat_memory = self.history)
         self.framework = framework
+    def complete_code(self, code: str) -> str:
+        # Check for common truncation patterns (e.g., unclosed parentheses or incomplete statements)
+        if code.count('(') != code.count(')'):
+            code += ')'  # Add a closing parenthesis if missing
+        # You can add more checks for other common issues
+        return code
     def load_model(self, dataframe, models_filter, temperature_filter):
         llm = OllamaLLM(
             model = models_filter,
@@ -312,7 +340,10 @@ class DataScience:
                 llm,
                 dataframe,
                 verbose = True,
-                allow_dangerous_code = True
+                allow_dangerous_code = True,
+                agent_executor_kwargs = {
+                    "handle_parsing_errors": True,
+                    }
             )
         elif self.framework == "PandasAI":
             return SmartDataframe(
@@ -340,7 +371,7 @@ class PlanAndSolve:
         planner = load_chat_planner(llm)
         executor = load_agent_executor(
             llm,
-            [PythonREPLTool(), ShellTool()],
+            [PythonREPLTool()],
             verbose = True
         )
         return PlanAndExecute(
