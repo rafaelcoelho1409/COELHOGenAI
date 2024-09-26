@@ -2,9 +2,8 @@ import streamlit as st
 from streamlit_extras.grid import grid
 import pandas as pd
 import json
-from langchain_community.callbacks.streamlit import (
-    StreamlitCallbackHandler,
-)
+from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
+from langchain_community.tools import ShellTool
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.prompts.structured import StructuredPrompt
 from langchain_core.runnables.history import RunnableWithMessageHistory
@@ -99,7 +98,6 @@ elif role_filter == "Information Retrieval":
         "LLM Math": "llm-math",
         "PubMed": "pubmed",
         "Requests": "requests_all",
-        #"Wikidata": "wikidata",
         "Wikipedia": "wikipedia",
         #"Yahoo Finance": "yfinance",
         #"Stack Exchange": "stackexchange"
@@ -108,6 +106,9 @@ elif role_filter == "Information Retrieval":
         label = "Tools",
         options = tools_dict.keys(),
     )
+    if tools_filter == []:
+        st.info("You need to select at least one tool.")
+        st.stop()
     tools = [tools_dict[tool_name] for tool_name in tools_filter]
     st.sidebar.markdown(f"**Tools:** {', '.join(tools_filter)}")
     st.session_state["tools_filter"] = tools_filter
@@ -186,7 +187,9 @@ try:
             lambda session_id: role.history,  # Always return the instance created earlier
             input_messages_key = role.input_variables,
             history_messages_key = "chat_history",
-        )        
+        )
+    elif role_filter == "Plan And Solve":
+        pass        
     else:
         model = RunnableWithMessageHistory(
             model,
@@ -300,9 +303,12 @@ else:
                     st.write(response)
                 st.stop()
             else:
-                response = model.invoke(
-                    {"input": prompt}, 
-                    config)
+                try:
+                    response = model.invoke(
+                        {"input": prompt}, 
+                        config)
+                except:
+                    response = model.run(prompt)
             #response
             try:
                 response["text"] = response["response"]

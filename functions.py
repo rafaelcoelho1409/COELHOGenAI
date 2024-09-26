@@ -16,6 +16,7 @@ from langchain_core.prompts.chat import (
     SystemMessagePromptTemplate
 )
 from langchain_core.prompts.string import StringPromptTemplate
+from langchain_core.tools import Tool
 from langchain_experimental.agents.agent_toolkits.python.base import create_python_agent
 from langchain_experimental.agents.agent_toolkits.pandas.base import create_pandas_dataframe_agent
 from langchain_experimental.tools.python.tool import PythonREPLTool
@@ -25,13 +26,14 @@ from langchain_experimental.plan_and_execute import (
     PlanAndExecute
 )
 #from langchain_experimental.llms.ollama_functions import OllamaFunctions
-from langchain_community.tools import ShellTool
 from langchain_ollama.chat_models import ChatOllama
 from langchain_ollama.llms import OllamaLLM
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.tools import ShellTool
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_community.agent_toolkits.load_tools import load_tools
+from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 from langchain.agents import (
     AgentExecutor, 
     AgentType, 
@@ -41,6 +43,7 @@ from langchain.agents import (
 from langchain.memory.buffer import ConversationBufferMemory
 from langchain.chains import LLMChain
 from langchain.chains.conversation.base import ConversationChain
+from langchain.chains.llm_math.base import LLMMathChain
 from langchain.tools.retriever import create_retriever_tool
 from langchain import hub
 
@@ -65,9 +68,9 @@ def settings():
             "Assistant",
             "Information Retrieval",
             #"PDF Assistant",
-            "Software Development",
+            #"Software Development",
             "Data Science",
-            "Plan And Solve",
+            #"Plan And Solve",
             "Prompt Engineering"
         ]
         try:
@@ -125,6 +128,7 @@ def prompt_settings():
         PROMPT_NAME = st.text_input(
             label = "Prompt name (LangChain Hub)"
         )
+        st.caption("**Example: hardkothari/prompt-maker**")
         prompt_name_submit = st.form_submit_button(
             label = "Run prompt",
             use_container_width = True
@@ -363,15 +367,26 @@ class PlanAndSolve:
         llm = OllamaLLM(
             model = models_filter,
             temperature = temperature_filter)
-        #tools = load_tools(
-        #    tool_names = tool_names,
-        #    llm = llm,
-        #    allow_dangerous_tools = True
-        #)
+        llm_math_chain = LLMMathChain.from_llm(
+            llm = llm, 
+            verbose = True)
         planner = load_chat_planner(llm)
+        search = DuckDuckGoSearchAPIWrapper()
+        tools = [
+            Tool(
+                name = "Search",
+                func = search.run,
+                description = "useful for when you need to answer questions about current events"
+            ),
+            Tool(
+                name = "Calculator",
+                func = llm_math_chain.run,
+                description = "useful for when you need to answer questions about math"
+            ),
+        ]
         executor = load_agent_executor(
             llm,
-            [PythonREPLTool()],
+            tools,
             verbose = True
         )
         return PlanAndExecute(
