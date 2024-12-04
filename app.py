@@ -8,7 +8,7 @@ from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.prompts.structured import StructuredPrompt
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_ollama.llms import OllamaLLM
-from functions import (
+from functions2 import (
     Assistant,
     InformationRetrieval,
     PromptEngineering,

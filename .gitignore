@@ -1,6 +1,7 @@
 __pycache__/
 cache/
-oraculo_env/
+.venv/
 pandasai.log
 test*.*
 input_variables_temp.json
+*baseline*

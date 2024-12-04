@@ -21,3 +21,4 @@ pandasai
 stackapi
 numexpr
 lxml
+seaborn
