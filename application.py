@@ -44,7 +44,7 @@ plan_and_solve = st.Page(
     icon = ":material/edit:")
 
 pg = st.navigation({
-    "COELHO GenAI": [
+    "COELHO GenAI by Rafael Coelho": [
         home],
     "Applications": [
         assistant,
@@ -58,7 +58,6 @@ pg = st.navigation({
 })
 
 
-st.sidebar.caption("Author: Rafael Silva Coelho")
 st.sidebar.title(pg.title)
 settings_button = st.sidebar.button(
     label = "Settings",

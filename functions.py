@@ -6,6 +6,14 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain.memory.buffer import ConversationBufferMemory
 from langchain_ollama.chat_models import ChatOllama
 from langchain.chains.conversation.base import ConversationChain
+from langchain_ollama.llms import OllamaLLM
+from langchain_community.agent_toolkits.load_tools import load_tools
+from langchain.agents import (
+    AgentExecutor, 
+    AgentType, 
+    initialize_agent,
+    create_tool_calling_agent
+)
 
 #>>>-------------------------------------------------<<<
 #STREAMLIT
@@ -114,3 +122,33 @@ class Assistant:
             memory = self.memory
         )
         return conversation
+    
+
+class InformationRetrieval:
+    def __init__(self):
+        self.history = StreamlitChatMessageHistory(key = "chat_history")
+        self.memory = ConversationBufferMemory(
+            memory_key = "chat_history", 
+            return_messages = True,
+            chat_memory = self.history)
+    def load_model(self, tool_names, models_filter, temperature_filter):
+        llm = OllamaLLM(
+            model = models_filter,
+            temperature = temperature_filter
+        )
+        if tool_names != []:
+            tools = load_tools(
+                tool_names = tool_names,
+                llm = llm,
+                allow_dangerous_tools = True
+            )
+            return initialize_agent(
+                tools = tools,
+                llm = llm,
+                agent = AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+                verbose = True,
+                handle_parsing_errors = True,
+                max_iterations = 2
+            )
+        else:
+            st.info("Choose at least one search engine tool.")
