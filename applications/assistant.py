@@ -23,9 +23,7 @@ with st.sidebar.expander("**Informations**", expanded = True):
 
 for msg in role.history.messages:
     st.chat_message(msg.type).write(msg.content)
-#if "role" not in st.session_state:
 st.session_state["role"] = role
-#if "model_memory" not in st.session_state:
 st.session_state["model_memory"] = role.memory
 
 
