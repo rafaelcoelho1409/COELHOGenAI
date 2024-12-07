@@ -53,6 +53,7 @@ if prompt := st.chat_input():
                 }, 
             "callbacks": [st_callback]}
         response = model.invoke(
-            {"input": prompt}, 
+            prompt,
+            #{"input": prompt}, 
             config)
         st.write(response["output"])

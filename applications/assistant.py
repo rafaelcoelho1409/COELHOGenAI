@@ -13,7 +13,7 @@ try:
         )
 except:
     st.info("Choose options in settings and click in 'Run model' button to start using COELHO GenAI.")
-
+    st.stop()
 
 with st.sidebar.expander("**Informations**", expanded = True):
     st.markdown(f"**Model:** {st.session_state["model_name"]}")

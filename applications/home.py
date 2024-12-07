@@ -1,6 +1,6 @@
 import streamlit as st
 from streamlit_extras.grid import grid
-from functions2 import (
+from functions import (
     image_border_radius
 )
 

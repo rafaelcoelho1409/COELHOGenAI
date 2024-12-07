@@ -156,7 +156,7 @@ def image_border_radius(image_path, border_radius, width, height, page_object = 
             page_object.markdown(img_html, unsafe_allow_html=True)
 
 def reload_active_models():
-    active_models_container = st.container()
+    active_models_container = st.sidebar.container()
     active_models_text = "## Active models (Ollama)\n"
     if ollama.ps()["models"] != []:
         for model_name in ollama.ps()["models"]:
@@ -220,7 +220,7 @@ class InformationRetrieval:
                 agent = AgentType.ZERO_SHOT_REACT_DESCRIPTION,
                 verbose = True,
                 handle_parsing_errors = True,
-                max_iterations = 2
+                max_iterations = 5
             )
         else:
             st.info("Choose at least one search engine tool.")
