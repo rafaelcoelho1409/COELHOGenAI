@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
+from langchain.memory.buffer import ConversationBufferMemory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.prompts.structured import StructuredPrompt
@@ -8,9 +9,17 @@ from functions import (
     PromptEngineering,
     reload_active_models,
     prompt_settings,
-    prompt_informations
+    prompt_informations,
+    check_model_and_temperature,
+    initialize_shared_memory
 )
 
+initialize_shared_memory()
+
+model_temperature_checker = check_model_and_temperature()
+if model_temperature_checker == False:
+    st.info("Choose model and temperature to start running COELHO GenAI models.")
+    st.stop()
 
 prompt_settings_button = st.sidebar.button(
     label = "Prompt settings",
@@ -33,25 +42,18 @@ if prompt_informations_button:
 role = PromptEngineering(PROMPT)
 model = role.load_model(
     st.session_state["model_name"], 
-    st.session_state["temperature_filter"])
+    st.session_state["temperature_filter"],
+    st.session_state["shared_memory"])
 model = RunnableWithMessageHistory(
     model,
-    lambda session_id: role.history,  # Always return the instance created earlier
-    input_messages_key = role.input_variables,
+    lambda session_id: st.session_state["history"],  # Always return the instance created earlier
+    input_messages_key = role.input_variables[0],
     history_messages_key = "chat_history",
 )
 
 
-with st.sidebar.expander("**Informations**", expanded = True):
-    st.markdown(f"**Model:** {st.session_state["model_name"]}")
-    st.markdown(f"**Temperature:** {st.session_state["temperature_filter"]}")
-    reload_active_models()
-
-
-for msg in role.history.messages:
+for msg in st.session_state["history"].messages:
     st.chat_message(msg.type).write(msg.content)
-st.session_state["role"] = role
-st.session_state["model_memory"] = role.memory
 
 
 st.sidebar.markdown(f"**Prompt name:** {PROMPT_NAME}")
@@ -120,11 +122,8 @@ if sorted(list(data_temp.keys())) == sorted(role.input_variables):
         #deleting temporary data
         with open("input_variables_temp.json", "w") as file:
             json.dump({}, file)
-        try:
-            response = model.invoke(
-                data_temp,
-                config
-            )
-        except:
-            pass
+        response = model.invoke(
+            data_temp,
+            config
+        )
         st.write(response)

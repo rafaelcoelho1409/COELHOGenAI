@@ -2,29 +2,28 @@ import streamlit as st
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from functions import (
     Assistant,
-    reload_active_models
+    reload_active_models,
+    check_model_and_temperature,
+    initialize_shared_memory
 )
 
-role = Assistant()
-try:
-    model = role.load_model(
-        st.session_state["temperature_filter"], 
-        st.session_state["model_name"]
-        )
-except:
-    st.info("Choose options in settings and click in 'Run model' button to start using COELHO GenAI.")
+initialize_shared_memory()
+
+model_temperature_checker = check_model_and_temperature()
+if model_temperature_checker == False:
+    st.info("Choose model and temperature to start running COELHO GenAI models.")
     st.stop()
 
-with st.sidebar.expander("**Informations**", expanded = True):
-    st.markdown(f"**Model:** {st.session_state["model_name"]}")
-    st.markdown(f"**Temperature:** {st.session_state["temperature_filter"]}")
-    reload_active_models()
+role = Assistant()
+model = role.load_model(
+    st.session_state["temperature_filter"], 
+    st.session_state["model_name"],
+    st.session_state["shared_memory"]
+    )
 
 
-for msg in role.history.messages:
+for msg in st.session_state["history"].messages:
     st.chat_message(msg.type).write(msg.content)
-st.session_state["role"] = role
-st.session_state["model_memory"] = role.memory
 
 
 if prompt := st.chat_input():

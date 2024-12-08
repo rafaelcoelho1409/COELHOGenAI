@@ -1,11 +1,20 @@
 import streamlit as st
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
+from langchain.memory.buffer import ConversationBufferMemory
 from langchain_ollama.llms import OllamaLLM
 from functions import (
     PDFAssistant,
-    reload_active_models
+    reload_active_models,
+    check_model_and_temperature,
+    initialize_shared_memory
 )
 
+initialize_shared_memory()
+
+model_temperature_checker = check_model_and_temperature()
+if model_temperature_checker == False:
+    st.info("Choose model and temperature to start running COELHO GenAI models.")
+    st.stop()
 
 with st.sidebar.form("PDFAssistant"):
     uploaded_file = st.file_uploader(
@@ -31,16 +40,8 @@ if uploaded_file is not None:
         role.vector_store(text_chunks)
 
 
-with st.sidebar.expander("**Informations**", expanded = True):
-    st.markdown(f"**Model:** {st.session_state["model_name"]}")
-    st.markdown(f"**Temperature:** {st.session_state["temperature_filter"]}")
-    reload_active_models()
-
-
-for msg in role.history.messages:
+for msg in st.session_state["history"].messages:
     st.chat_message(msg.type).write(msg.content)
-st.session_state["role"] = role
-st.session_state["model_memory"] = role.memory
 
 
 if prompt := st.chat_input():
@@ -52,13 +53,8 @@ if prompt := st.chat_input():
         config = {"configurable": {"session_id": "any"}, "callbacks": [st_callback]}
         retrieval_chain = st.session_state["role"].process_user_input(prompt)
         model = st.session_state["role"].load_model(retrieval_chain)
-        try:
-            response = model.invoke(
-                {"input": prompt}, 
-                config)
-        except:
-            response = model.run(prompt)
+        response = model.invoke(
+            {"input": prompt}, 
+            config)
         #response
         st.write(response)
-
-#IMPORTANT: MAKE CORRECTIONS IN CODE BECAUSE THERE'S NO ROLE FUNCTION IN PDFAssistant CLASS

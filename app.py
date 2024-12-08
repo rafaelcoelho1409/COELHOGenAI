@@ -1,14 +1,17 @@
 import streamlit as st
+from langchain_community.chat_message_histories import StreamlitChatMessageHistory
+from langchain.memory.buffer import ConversationBufferMemory
 from functions import (
     settings,
-    reload_active_models
+    reload_active_models,
+    check_model_and_temperature,
+    initialize_shared_memory
 )
 
 st.set_page_config(
     page_title = "COELHO GenAI", 
     page_icon = ":material/home:",
     layout = "wide")
-
 
 home = st.Page(
     "applications/home.py", 
@@ -50,7 +53,7 @@ pg = st.navigation({
         assistant,
         information_retrieval,
         data_science,
-        prompt_engineering,
+        #prompt_engineering,
         pdf_assistant,
         software_development,
         plan_and_solve
@@ -65,6 +68,21 @@ settings_button = st.sidebar.button(
 )
 if settings_button:
     settings()
-    reload_active_models()
+
 
 pg.run()
+
+
+model_temperature_checker = check_model_and_temperature()
+if model_temperature_checker == False:
+    st.info("Choose model and temperature to start running COELHO GenAI models.")
+    st.stop()
+
+
+with st.sidebar.expander("**Informations**", expanded = True):
+    st.markdown(f"**Model:** {st.session_state["model_name"]}")
+    st.markdown(f"**Temperature:** {st.session_state["temperature_filter"]}")
+    reload_active_models()
+
+
+initialize_shared_memory()

@@ -1,18 +1,27 @@
 import streamlit as st
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
+from langchain.memory.buffer import ConversationBufferMemory
 from functions import (
     InformationRetrieval,
-    reload_active_models
+    reload_active_models,
+    check_model_and_temperature,
+    initialize_shared_memory
 )
 
+initialize_shared_memory()
+
+model_temperature_checker = check_model_and_temperature()
+if model_temperature_checker == False:
+    st.info("Choose model and temperature to start running COELHO GenAI models.")
+    st.stop()
 
 tools_dict = {
-    #"Arxiv": "arxiv",
+    "Arxiv": "arxiv",
     #"DuckDuckGo": "ddg-search",
-    "LLM Math": "llm-math",
-    "PubMed": "pubmed",
-    "Requests": "requests_all",
-    "Wikipedia": "wikipedia",
+    #"LLM Math": "llm-math",
+    #"PubMed": "pubmed",
+    #"Requests": "requests_all",
+    #"Wikipedia": "wikipedia",
     #"Yahoo Finance": "yfinance",
     #"Stack Exchange": "stackexchange"
 }
@@ -23,23 +32,17 @@ tools_filter = st.sidebar.selectbox(
 if tools_filter == None:
     st.info("You need to select at least one tool.")
     st.stop()
+
 role = InformationRetrieval()
 model = role.load_model(
     [tools_dict[tools_filter]], 
     st.session_state["model_name"], 
-    st.session_state["temperature_filter"])
+    st.session_state["temperature_filter"],
+    st.session_state["shared_memory"])
 
 
-with st.sidebar.expander("**Informations**", expanded = True):
-    st.markdown(f"**Model:** {st.session_state["model_name"]}")
-    st.markdown(f"**Temperature:** {st.session_state["temperature_filter"]}")
-    reload_active_models()
-
-
-for msg in role.history.messages:
+for msg in st.session_state["history"].messages:
     st.chat_message(msg.type).write(msg.content)
-st.session_state["role"] = role
-st.session_state["model_memory"] = role.memory
 
 
 if prompt := st.chat_input():

@@ -4,43 +4,43 @@ import ollama
 import os
 from pandasai import SmartDataframe
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
-from langchain_core.prompts import ChatPromptTemplate
-from langchain.memory.buffer import ConversationBufferMemory
-from langchain_ollama.chat_models import ChatOllama
-from langchain.chains.conversation.base import ConversationChain
-from langchain_ollama.llms import OllamaLLM
 from langchain_community.agent_toolkits.load_tools import load_tools
-from langchain.agents import (
-    AgentExecutor, 
-    AgentType, 
-    initialize_agent,
-    create_tool_calling_agent
-)
+from langchain_community.embeddings import OllamaEmbeddings
+from langchain_community.document_loaders import UnstructuredFileLoader
+from langchain_community.vectorstores import Chroma
+from langchain_community.tools import ShellTool
+from langchain_community.utilities import WikipediaAPIWrapper
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.prompts.prompt import PromptTemplate
-from langchain_experimental.agents.agent_toolkits.pandas.base import create_pandas_dataframe_agent
 from langchain_core.prompts.structured import StructuredPrompt
 from langchain_core.prompts.chat import (
     ChatPromptTemplate,
     HumanMessagePromptTemplate,
     SystemMessagePromptTemplate
 )
+from langchain_core.tools import Tool
+from langchain.memory.buffer import ConversationBufferMemory
+from langchain.chains.conversation.base import ConversationChain
 from langchain.chains import LLMChain
 from langchain import hub
-from langchain_community.embeddings import OllamaEmbeddings
-from langchain_community.document_loaders import UnstructuredFileLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
 from langchain.tools.retriever import create_retriever_tool
-from langchain_experimental.tools.python.tool import PythonREPLTool
-from langchain_community.tools import ShellTool
 from langchain.chains.llm_math.base import LLMMathChain
+from langchain.agents import (
+    AgentExecutor, 
+    AgentType, 
+    initialize_agent,
+    create_tool_calling_agent
+)
+from langchain_ollama.chat_models import ChatOllama
+from langchain_ollama.llms import OllamaLLM
+from langchain_experimental.agents.agent_toolkits.pandas.base import create_pandas_dataframe_agent
+from langchain_experimental.tools.python.tool import PythonREPLTool
 from langchain_experimental.plan_and_execute import (
     load_chat_planner,
     load_agent_executor,
     PlanAndExecute
 )
-from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
-from langchain_core.tools import Tool
 
 #>>>-------------------------------------------------<<<
 #STREAMLIT
@@ -164,12 +164,26 @@ def reload_active_models():
     else:
         active_models_text += "No active models."
     active_models_container.info(active_models_text)
+
+def check_model_and_temperature():
+    return all([x in st.session_state.keys() for x in ["model_name", "temperature_filter"]])
+
+def initialize_shared_memory():
+    # Initialize shared memory
+    if "history" not in st.session_state:
+        st.session_state["history"] = StreamlitChatMessageHistory(key = "chat_history")
+    if "shared_memory" not in st.session_state:
+        st.session_state["shared_memory"] = ConversationBufferMemory(
+            memory_key = "chat_history", 
+            return_messages = True,
+            chat_memory = st.session_state["history"]
+        )
+
 #>>>-------------------------------------------------<<<
 #CLASSES
 #>>>-------------------------------------------------<<<
 class Assistant:
     def __init__(self):
-        self.history = StreamlitChatMessageHistory(key = "chat_history")
         self.prompt_template = """
             You are a nice chatbot having a conversation with a human.
     
@@ -179,11 +193,7 @@ class Assistant:
             Human: {input}
             """
         self.prompt = ChatPromptTemplate.from_template(self.prompt_template)
-        self.memory = ConversationBufferMemory(
-            memory_key = "chat_history", 
-            return_messages = True,
-            chat_memory = self.history)
-    def load_model(self, temperature_filter, model_name):
+    def load_model(self, temperature_filter, model_name, memory):
         llm = ChatOllama(
                 model = model_name, 
                 temperature = temperature_filter)
@@ -191,19 +201,15 @@ class Assistant:
             llm = llm,
             prompt = self.prompt,
             verbose = True,
-            memory = self.memory
+            memory = memory
         )
         return conversation
     
 
 class InformationRetrieval:
     def __init__(self):
-        self.history = StreamlitChatMessageHistory(key = "chat_history")
-        self.memory = ConversationBufferMemory(
-            memory_key = "chat_history", 
-            return_messages = True,
-            chat_memory = self.history)
-    def load_model(self, tool_names, models_filter, temperature_filter):
+        pass
+    def load_model(self, tool_names, models_filter, temperature_filter, memory):
         llm = OllamaLLM(
             model = models_filter,
             temperature = temperature_filter
@@ -217,6 +223,7 @@ class InformationRetrieval:
             return initialize_agent(
                 tools = tools,
                 llm = llm,
+                memory = memory,
                 agent = AgentType.ZERO_SHOT_REACT_DESCRIPTION,
                 verbose = True,
                 handle_parsing_errors = True,
@@ -227,22 +234,17 @@ class InformationRetrieval:
 
 class DataScience:
     def __init__(self, framework):
-        self.history = StreamlitChatMessageHistory(key = "chat_messages")
-        self.memory = ConversationBufferMemory(
-            #memory_key = "chat_history", 
-            return_messages = True,
-            chat_memory = self.history)
         self.framework = framework
-    def complete_code(self, code: str) -> str:
-        # Check for common truncation patterns (e.g., unclosed parentheses or incomplete statements)
-        if code.count('(') != code.count(')'):
-            code += ')'  # Add a closing parenthesis if missing
-        # You can add more checks for other common issues
-        return code
-    def load_model(self, dataframe, models_filter, temperature_filter):
-        llm = OllamaLLM(
+    def pandasai_query(self, query):
+        return self.smartdataframe.chat(query)
+    def load_model(self, dataframe, models_filter, temperature_filter, memory):
+        self.llm = OllamaLLM(
             model = models_filter,
             temperature = temperature_filter)
+        self.smartdataframe = SmartDataframe(
+                dataframe,
+                config = {"llm": self.llm}
+            )
         if self.framework == "LangChain":
             PROMPT = (
                 "If you do not know the answer, say you don't know.\n"
@@ -255,28 +257,34 @@ class DataScience:
                 template = PROMPT, 
                 input_variables = ["query"])
             return create_pandas_dataframe_agent(
-                llm,
+                self.llm,
                 dataframe,
+                memory = memory,
                 verbose = True,
                 allow_dangerous_code = True,
                 agent_executor_kwargs = {
                     "handle_parsing_errors": True,
-                    }
+                    },
+                max_iterations = 5
             )
         elif self.framework == "PandasAI":
-            return SmartDataframe(
-                dataframe,
-                config = {"llm": llm}
+            tools = [
+                Tool(
+                    name = "PandasAI",
+                    func = self.pandasai_query,
+                    description = "Use this tool to query the SmartDataFrame"
+                )
+            ]
+            return initialize_agent(
+                tools = tools,
+                llm = self.llm,
+                memory = memory,
+                agent = "conversational-react-description"
             )
         
 class PromptEngineering:
     def __init__(self, PROMPT):
-        self.history = StreamlitChatMessageHistory(key = "chat_history")
         self.prompt = PROMPT
-        self.memory = ConversationBufferMemory(
-            #memory_key = "chat_history", 
-            return_messages = True,
-            chat_memory = self.history)
         if type(PROMPT) in [ChatPromptTemplate, StructuredPrompt]:
             self.human_input_variables = [
                 x.input_variables for x in PROMPT.messages 
@@ -292,7 +300,7 @@ class PromptEngineering:
                 self.input_variables = self.system_input_variables[0] + self.human_input_variables[0]
         elif type(PROMPT) == PromptTemplate:
             self.input_variables = PROMPT.input_variables
-    def load_model(self, models_filter, temperature_filter):
+    def load_model(self, models_filter, temperature_filter, memory):
         self.llm = ChatOllama(
             model = models_filter,
             temperature = temperature_filter
@@ -301,7 +309,7 @@ class PromptEngineering:
             llm = self.llm,
             prompt = self.prompt,
             verbose = True,
-            memory = self.memory
+            memory = memory
         )
         return conversation
     
@@ -335,11 +343,11 @@ class PDFAssistant:
         prompt = ChatPromptTemplate.from_messages(
             [
                 ("system",
-"""You are a helpful assistant. Answer the question as detailed 
-as possible from the provided context, 
-make sure to provide all the details, 
-if the answer is not in provided context just say, 
-"answer is not available in the context", don't provide the wrong answer""",
+                    """You are a helpful assistant. Answer the question as detailed 
+                    as possible from the provided context, 
+                    make sure to provide all the details, 
+                    if the answer is not in provided context just say, 
+                    "answer is not available in the context", don't provide the wrong answer""",
                 ),
                 ("placeholder", "{chat_history}"),
                 ("human", "{input}"),
@@ -374,12 +382,8 @@ if the answer is not in provided context just say,
     
 class SoftwareDevelopment:
     def __init__(self):
-        self.history = StreamlitChatMessageHistory(key = "chat_messages")
-        self.memory = ConversationBufferMemory(
-            #memory_key = "chat_history", 
-            return_messages = True,
-            chat_memory = self.history)
-    def load_model(self, models_filter, temperature_filter):
+        pass
+    def load_model(self, models_filter, temperature_filter, memory):
         llm = OllamaLLM(
             model = models_filter,
             temperature = temperature_filter)
@@ -391,39 +395,29 @@ class SoftwareDevelopment:
         #)
         return initialize_agent(
             llm = llm,
+            memory = memory,
             tools = [
                 PythonREPLTool(),
                 ShellTool()],
             verbose = True,
             agent_type = AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+            max_iterations = 5
         )
     
 class PlanAndSolve:
     def __init__(self):
-        self.history = StreamlitChatMessageHistory(key = "chat_messages")
-        self.memory = ConversationBufferMemory(
-            #memory_key = "chat_history", 
-            return_messages = True,
-            chat_memory = self.history)
-    def load_model(self, models_filter, temperature_filter):
+        pass
+    def load_model(self, models_filter, temperature_filter, memory):
         llm = OllamaLLM(
             model = models_filter,
             temperature = temperature_filter)
-        llm_math_chain = LLMMathChain.from_llm(
-            llm = llm, 
-            verbose = True)
         planner = load_chat_planner(llm)
-        search = DuckDuckGoSearchAPIWrapper()
+        search = WikipediaAPIWrapper()
         tools = [
             Tool(
                 name = "Search",
                 func = search.run,
                 description = "useful for when you need to answer questions about current events"
-            ),
-            Tool(
-                name = "Calculator",
-                func = llm_math_chain.run,
-                description = "useful for when you need to answer questions about math"
             ),
         ]
         executor = load_agent_executor(
@@ -434,5 +428,6 @@ class PlanAndSolve:
         return PlanAndExecute(
             planner = planner,
             executor = executor,
+            memory = memory,
             verbose = True
         )

@@ -1,10 +1,20 @@
 import streamlit as st
 import pandas as pd
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
+from langchain.memory.buffer import ConversationBufferMemory
 from functions import (
     DataScience,
-    reload_active_models
+    reload_active_models,
+    check_model_and_temperature,
+    initialize_shared_memory
 )
+
+initialize_shared_memory()
+
+model_temperature_checker = check_model_and_temperature()
+if model_temperature_checker == False:
+    st.info("Choose model and temperature to start running COELHO GenAI models.")
+    st.stop()
 
 
 ds_framework = st.sidebar.selectbox(
@@ -36,19 +46,12 @@ with st.sidebar.form("DataScience"):
         model = role.load_model(
             df, 
             st.session_state["model_name"], 
-            st.session_state["temperature_filter"])
+            st.session_state["temperature_filter"],
+            st.session_state["shared_memory"])
 
 
-with st.sidebar.expander("**Informations**", expanded = True):
-    st.markdown(f"**Model:** {st.session_state["model_name"]}")
-    st.markdown(f"**Temperature:** {st.session_state["temperature_filter"]}")
-    reload_active_models()
-
-
-for msg in role.history.messages:
+for msg in st.session_state["history"].messages:
     st.chat_message(msg.type).write(msg.content)
-st.session_state["role"] = role
-st.session_state["model_memory"] = role.memory
 
 
 if uploaded_file is None:
@@ -67,19 +70,19 @@ if prompt := st.chat_input():
                 "session_id": "any"
             }, 
             "callbacks": [st_callback]}
-        if st.session_state["ds_framework"] == "PandasAI":
-            response = model.chat(prompt)
-            try:    
-                st.dataframe(response)
-            except:
-                st.write(response)
-            st.stop()
-        else:
-            try:
-                response = model.invoke(
-                    {"input": prompt}, 
-                    config)
-            except:
-                response = model.run(prompt)
+        #if st.session_state["ds_framework"] == "PandasAI":
+        #    response = model.chat(prompt)
+        #    try:    
+        #        st.dataframe(response)
+        #    except:
+        #        st.write(response)
+        #    st.stop()
+        #else:
+        try:
+            response = model.invoke(
+                {"input": prompt}, 
+                config)
+        except:
+            response = model.run(prompt)
         #response
-        st.write(response)
+        st.write(response["output"])
