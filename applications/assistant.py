@@ -2,7 +2,6 @@ import streamlit as st
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from functions import (
     Assistant,
-    reload_active_models,
     check_model_and_temperature,
     initialize_shared_memory
 )

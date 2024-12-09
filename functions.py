@@ -209,17 +209,17 @@ class Assistant:
 class InformationRetrieval:
     def __init__(self):
         pass
-    def load_model(self, tool_names, models_filter, temperature_filter, memory):
+    def load_model(self, tools, models_filter, temperature_filter, memory):
         llm = OllamaLLM(
             model = models_filter,
             temperature = temperature_filter
         )
-        if tool_names != []:
-            tools = load_tools(
-                tool_names = tool_names,
-                llm = llm,
-                allow_dangerous_tools = True
-            )
+        if tools != []:
+            #tools = load_tools(
+            #    tool_names = tool_names,
+            #    llm = llm,
+            #    allow_dangerous_tools = True
+            #)
             return initialize_agent(
                 tools = tools,
                 llm = llm,
@@ -227,7 +227,7 @@ class InformationRetrieval:
                 agent = AgentType.ZERO_SHOT_REACT_DESCRIPTION,
                 verbose = True,
                 handle_parsing_errors = True,
-                max_iterations = 5
+                #max_iterations = 5
             )
         else:
             st.info("Choose at least one search engine tool.")
@@ -272,7 +272,10 @@ class DataScience:
                 Tool(
                     name = "PandasAI",
                     func = self.pandasai_query,
-                    description = "Use this tool to query the SmartDataFrame"
+                    description = """
+                        Use this tool to query the SmartDataFrame. After receiving the dataframe
+                        coming from PandasAI SmartDataFrame, make the analysis requested by the user.
+                        Check the columns first to understand the context better."""
                 )
             ]
             return initialize_agent(
@@ -313,6 +316,12 @@ class PromptEngineering:
         )
         return conversation
     
+
+class DocumentAssistant:
+    def load_model(self, temperature_filter, model_name, memory, loader_framework):
+        return
+
+
 class PDFAssistant:
     def __init__(self, llm, model_name, uploaded_file):
         self.llm = llm

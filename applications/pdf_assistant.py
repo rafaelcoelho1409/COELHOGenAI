@@ -4,7 +4,6 @@ from langchain.memory.buffer import ConversationBufferMemory
 from langchain_ollama.llms import OllamaLLM
 from functions import (
     PDFAssistant,
-    reload_active_models,
     check_model_and_temperature,
     initialize_shared_memory
 )

@@ -3,7 +3,6 @@ from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from langchain.memory.buffer import ConversationBufferMemory
 from functions import (
     SoftwareDevelopment,
-    reload_active_models,
     check_model_and_temperature,
     initialize_shared_memory
 )

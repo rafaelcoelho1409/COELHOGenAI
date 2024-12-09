@@ -1,7 +1,7 @@
 import streamlit as st
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from functions import (
-    PlanAndSolve,
+    DocumentAssistant,
     check_model_and_temperature,
     initialize_shared_memory
 )
@@ -13,11 +13,21 @@ if model_temperature_checker == False:
     st.info("Choose model and temperature to start running COELHO GenAI models.")
     st.stop()
 
-role = PlanAndSolve()
+loader_framework = st.sidebar.selectbox(
+    label = "Document Loader Framework",
+    options = [
+        "Docling",
+        "LangChain"
+    ]
+)
+
+role = DocumentAssistant()
 model = role.load_model(
-    st.session_state["model_name"], 
-    st.session_state["temperature_filter"],
-    st.session_state["shared_memory"])
+    st.session_state["temperature_filter"], 
+    st.session_state["model_name"],
+    st.session_state["shared_memory"],
+    loader_framework
+    )
 
 
 for msg in st.session_state["history"].messages:

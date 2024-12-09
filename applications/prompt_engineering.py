@@ -7,7 +7,6 @@ from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.prompts.structured import StructuredPrompt
 from functions import (
     PromptEngineering,
-    reload_active_models,
     prompt_settings,
     prompt_informations,
     check_model_and_temperature,

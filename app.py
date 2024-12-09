@@ -29,10 +29,10 @@ data_science = st.Page(
     "applications/data_science.py", 
     title = "Data Science", 
     icon = ":material/edit:")
-prompt_engineering = st.Page(
-    "applications/prompt_engineering.py", 
-    title = "Prompt Engineering", 
-    icon = ":material/edit:")
+#prompt_engineering = st.Page(
+#    "applications/prompt_engineering.py", 
+#    title = "Prompt Engineering", 
+#    icon = ":material/edit:")
 pdf_assistant = st.Page(
     "applications/pdf_assistant.py", 
     title = "PDF Assistant", 
@@ -45,6 +45,10 @@ plan_and_solve = st.Page(
     "applications/plan_and_solve.py", 
     title = "Plan & Solve", 
     icon = ":material/edit:")
+document_assistant = st.Page(
+    "applications/document_assistant.py", 
+    title = "Document Assistant", 
+    icon = ":material/edit:")
 
 pg = st.navigation({
     "COELHO GenAI by Rafael Coelho": [
@@ -54,9 +58,10 @@ pg = st.navigation({
         information_retrieval,
         data_science,
         #prompt_engineering,
+        document_assistant,
         pdf_assistant,
         software_development,
-        plan_and_solve
+        plan_and_solve,
     ]
 })
 

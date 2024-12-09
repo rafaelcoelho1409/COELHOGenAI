@@ -1,9 +1,19 @@
 import streamlit as st
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
-from langchain.memory.buffer import ConversationBufferMemory
+from langchain_core.tools import Tool
+from langchain_community.utilities.arxiv import ArxivAPIWrapper
+from langchain_community.tools.shell.tool import ShellTool
+from langchain_community.tools.ddg_search.tool import DuckDuckGoSearchResults
+from langchain_community.tools.pubmed.tool import PubmedQueryRun
+#from langchain_community.utilities.searx_search import SearxSearchWrapper
+from langchain_community.utilities.stackexchange import StackExchangeAPIWrapper
+from langchain_community.tools.wikidata.tool import WikidataAPIWrapper, WikidataQueryRun
+from langchain_community.tools.wikipedia.tool import WikipediaQueryRun, WikipediaAPIWrapper
+from langchain_community.tools.yahoo_finance_news import YahooFinanceNewsTool
+from langchain_community.tools.youtube.search import YouTubeSearchTool
+from langchain_experimental.utilities.python import PythonREPL
 from functions import (
     InformationRetrieval,
-    reload_active_models,
     check_model_and_temperature,
     initialize_shared_memory
 )
@@ -16,14 +26,17 @@ if model_temperature_checker == False:
     st.stop()
 
 tools_dict = {
-    "Arxiv": "arxiv",
-    #"DuckDuckGo": "ddg-search",
-    #"LLM Math": "llm-math",
-    #"PubMed": "pubmed",
-    #"Requests": "requests_all",
-    #"Wikipedia": "wikipedia",
-    #"Yahoo Finance": "yfinance",
-    #"Stack Exchange": "stackexchange"
+    "Arxiv": ArxivAPIWrapper(),
+    "Shell": ShellTool(),
+    "DuckDuckGo": DuckDuckGoSearchResults(),
+    "Python": PythonREPL(),
+    "PubMed": PubmedQueryRun(),
+    #"SearxNG": SearxSearchWrapper(searx_host = "http://localhost:8888"),
+    "StackExchange": StackExchangeAPIWrapper(),
+    "Wikidata": WikidataQueryRun(api_wrapper = WikidataAPIWrapper()),
+    "Wikipedia": WikipediaQueryRun(api_wrapper = WikipediaAPIWrapper()),
+    "Yahoo Finance News": YahooFinanceNewsTool(),
+    "YouTube Search": YouTubeSearchTool()
 }
 tools_filter = st.sidebar.selectbox(
     label = "Tools",
@@ -35,7 +48,13 @@ if tools_filter == None:
 
 role = InformationRetrieval()
 model = role.load_model(
-    [tools_dict[tools_filter]], 
+    [
+        Tool(
+            tools_dict[tools_filter].__class__.__name__,
+            func = tools_dict[tools_filter].run,
+            description = tools_dict[tools_filter].__class__.__name__,
+        )
+    ],
     st.session_state["model_name"], 
     st.session_state["temperature_filter"],
     st.session_state["shared_memory"])

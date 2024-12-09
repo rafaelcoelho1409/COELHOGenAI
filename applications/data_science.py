@@ -4,7 +4,6 @@ from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from langchain.memory.buffer import ConversationBufferMemory
 from functions import (
     DataScience,
-    reload_active_models,
     check_model_and_temperature,
     initialize_shared_memory
 )
@@ -70,19 +69,7 @@ if prompt := st.chat_input():
                 "session_id": "any"
             }, 
             "callbacks": [st_callback]}
-        #if st.session_state["ds_framework"] == "PandasAI":
-        #    response = model.chat(prompt)
-        #    try:    
-        #        st.dataframe(response)
-        #    except:
-        #        st.write(response)
-        #    st.stop()
-        #else:
-        try:
-            response = model.invoke(
-                {"input": prompt}, 
-                config)
-        except:
-            response = model.run(prompt)
-        #response
+        response = model.invoke(
+            {"input": prompt}, 
+            config)
         st.write(response["output"])
