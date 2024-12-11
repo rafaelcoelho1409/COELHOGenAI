@@ -1,7 +1,10 @@
 import streamlit as st
+import pandas as pd
 import base64
 import ollama
 import os
+import io
+import json
 from pandasai import SmartDataframe
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from langchain_community.agent_toolkits.load_tools import load_tools
@@ -41,6 +44,11 @@ from langchain_experimental.plan_and_execute import (
     load_agent_executor,
     PlanAndExecute
 )
+from docling.datamodel.base_models import DocumentStream, InputFormat
+from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.document_converter import DocumentConverter
+from docling_core.types.doc import ImageRefMode, PictureItem, TableItem
+
 
 #>>>-------------------------------------------------<<<
 #STREAMLIT
@@ -320,6 +328,113 @@ class PromptEngineering:
 class DocumentAssistant:
     def load_model(self, temperature_filter, model_name, memory, loader_framework):
         return
+    def process_document(self, uploaded_file):
+        file_content = uploaded_file.read()
+        buffered = io.BytesIO(file_content)
+        content = DocumentStream(
+            name = uploaded_file.name,
+            stream = buffered
+        )
+        with st.spinner("Converting file"):
+            pipeline_options = PdfPipelineOptions()
+            pipeline_options.do_ocr = True
+            pipeline_options.do_table_structure = True
+            pipeline_options.table_structure_options.do_cell_matching = True
+            doc_converter = DocumentConverter(
+                allowed_formats = [
+                    InputFormat.PDF,
+                    InputFormat.IMAGE,
+                    InputFormat.DOCX,
+                    InputFormat.HTML,
+                    InputFormat.PPTX,
+                    InputFormat.ASCIIDOC,
+                    InputFormat.MD,
+                ]
+            )
+            result = doc_converter.convert(
+                content
+            )
+            return result
+    def save_artifacts(self, processed_doc):
+        with st.spinner("Saving artifacts"):
+            processed_doc_dict = processed_doc.document.export_to_dict()
+            for x in [
+                f"docling/documents/{processed_doc_dict['name']}",
+                f"docling/documents/{processed_doc_dict['name']}/images",
+                f"docling/documents/{processed_doc_dict['name']}/tables"
+            ]:
+                try:
+                    os.makedirs(x)
+                except:
+                    pass
+        with st.spinner("Saving document in JSON"):
+            #save doc in JSON
+            with open(f"docling/documents/{processed_doc_dict['name']}/{processed_doc_dict['name']}.json", "w") as outfile:
+                json.dump(processed_doc_dict, outfile)
+        with st.spinner("Saving images from document"):
+            #save page images
+            for page_no, page in processed_doc.document.pages.items():
+                page_no = page.page_no
+                page_image_filename = f"docling/documents/{processed_doc_dict['name']}/images/{page_no}.png"
+                try:
+                    with open(page_image_filename, "wb") as outfile:
+                        page.image.pil_image.save(outfile, format = "PNG")
+                except:
+                    pass
+        with st.spinner("Saving images of figures and tables from document"):
+            #save images of figures and tables
+            table_counter = 0
+            picture_counter = 0
+            for element, _level in processed_doc.document.iterate_items():
+                if isinstance(element, TableItem):
+                    table_counter += 1
+                    element_image_filename = f"docling/documents/{processed_doc_dict['name']}/images/table-{table_counter}.png"
+                    try:
+                        with open(element_image_filename, "wb") as outfile:
+                            element.get_image(processed_doc.document).save(outfile, format = "PNG")
+                    except:
+                        pass
+                if isinstance(element, PictureItem):
+                    picture_counter += 1
+                    element_image_filename = f"docling/documents/{processed_doc_dict['name']}/images/picture-{picture_counter}.png"
+                    try:
+                        with open(element_image_filename, "wb") as outfile:
+                            element.get_image(processed_doc.document).save(outfile, "PNG")
+                    except:
+                        pass
+        with st.spinner("Saving document in Markdown and HTML"):
+            try:
+                # Save markdown with embedded pictures
+                md_filename = f"docling/documents/{processed_doc_dict['name']}-with-images.md"
+                processed_doc.document.save_as_markdown(md_filename, image_mode = ImageRefMode.EMBEDDED)
+            except:
+                pass
+            try:
+                # Save markdown with externally referenced pictures
+                md_filename = f"docling/documents/{processed_doc_dict['name']}-with-image-refs.md"
+                processed_doc.document.save_as_markdown(md_filename, image_mode = ImageRefMode.REFERENCED)
+            except:
+                pass            
+            try:
+                # Save HTML with externally referenced pictures
+                html_filename = f"docling/documents/{processed_doc_dict['name']}-with-image-refs.html"
+                processed_doc.document.save_as_html(html_filename, image_mode = ImageRefMode.REFERENCED)
+            except:
+                pass
+        with st.spinner("Saving tables from document"):
+            # Export tables
+            for table_ix, table in enumerate(processed_doc.document.tables):
+                table_df: pd.DataFrame = table.export_to_dataframe()
+                # Save the table as csv
+                element_csv_filename = f"docling/documents/{processed_doc_dict['name']}/tables/table-{table_ix+1}.csv"
+                table_df.to_csv(element_csv_filename)
+                # Save the table as html
+                element_html_filename = f"docling/documents/{processed_doc_dict['name']}/tables/table-{table_ix+1}.html"
+                with open(element_html_filename, "w") as fp:
+                    fp.write(table.export_to_html())
+            
+    
+            
 
 
 class PDFAssistant:

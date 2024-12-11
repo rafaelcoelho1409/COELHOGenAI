@@ -6,3 +6,4 @@ test*.*
 input_variables_temp.json
 *baseline*
 exports/
+docling/
