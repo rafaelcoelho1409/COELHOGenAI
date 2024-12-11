@@ -23,7 +23,11 @@ loader_framework = st.sidebar.selectbox(
     ]
 )
 
-role = DocumentAssistant()
+try:
+    os.mkdir("qdrant_langchain")
+except:
+    pass
+role = DocumentAssistant(st.session_state["model_name"], "qdrant_langchain")
 model = role.load_model(
     st.session_state["temperature_filter"], 
     st.session_state["model_name"],
@@ -32,6 +36,7 @@ model = role.load_model(
     )
 
 
+COLLECTION_NAME = "docling"
 available_filetypes = ["pdf", "jpg", "jpeg", "png", "webp", "docx", "html", "pptx", "adoc", "asciidoc", "md"]
 if loader_framework == "Docling":
     with st.sidebar.form("Upload file to analyze"):
@@ -44,25 +49,30 @@ if loader_framework == "Docling":
         )
     if submit_path:
         if uploaded_file:
-            processed_doc = role.process_document(uploaded_file)
-            role.save_artifacts(processed_doc)
+            processed_doc = role.process_document(uploaded_file, loader_framework)
+            role.save_artifacts_docling(processed_doc)
+            retrieved_docs = role.store_on_qdrant(processed_doc, COLLECTION_NAME)
+            for x in retrieved_docs:
+                st.write(x)
+            st.stop()
 
 
-#for msg in st.session_state["history"].messages:
-#    st.chat_message(msg.type).write(msg.content)
-#
-#
-#if prompt := st.chat_input():
-#    st.chat_message("human").markdown(prompt)
-#    # As usual, new messages are added to StreamlitChatMessageHistory when the Chain is called.
-#    with st.chat_message("assistant"):
-#        st_callback = StreamlitCallbackHandler(st.container())
-#        config = {
-#            "configurable": {
-#                "session_id": "any"
-#                }, 
-#            "callbacks": [st_callback]}
-#        response = model.invoke(
-#            {"input": prompt}, 
-#            config)
-#        st.write(response["response"])
+for msg in st.session_state["history"].messages:
+    st.chat_message(msg.type).write(msg.content)
+
+
+if prompt := st.chat_input():
+    st.chat_message("human").markdown(prompt)
+    # As usual, new messages are added to StreamlitChatMessageHistory when the Chain is called.
+    with st.chat_message("assistant"):
+        st_callback = StreamlitCallbackHandler(st.container())
+        config = {
+            "configurable": {
+                "session_id": "any"
+                }, 
+            "callbacks": [st_callback]}
+        #response = model.invoke(
+        #    {"input": prompt}, 
+        #    config)
+        #st.write(response["response"])
+        #retrieved_docs = role.RAG(COLLECTION_NAME, prompt)

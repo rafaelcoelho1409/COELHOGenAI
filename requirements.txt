@@ -6,6 +6,7 @@ langchain-ollama
 langchain-experimental
 langchain-community
 langchainhub
+langchain-qdrant
 PyPDF2
 unstructured[pdf]
 chromadb
@@ -24,3 +25,6 @@ lxml
 seaborn
 tabulate
 docling==2.8.3
+qdrant-client
+docling-core
+fastembed

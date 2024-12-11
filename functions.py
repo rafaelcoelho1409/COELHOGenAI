@@ -48,6 +48,10 @@ from docling.datamodel.base_models import DocumentStream, InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter
 from docling_core.types.doc import ImageRefMode, PictureItem, TableItem
+from docling_core.transforms.chunker import HierarchicalChunker 
+from langchain_qdrant import QdrantVectorStore
+from qdrant_client import QdrantClient
+from qdrant_client.http.models import Distance, VectorParams
 
 
 #>>>-------------------------------------------------<<<
@@ -326,36 +330,41 @@ class PromptEngineering:
     
 
 class DocumentAssistant:
+    def __init__(self, model_name, qdrant_client_path):
+        #self.qdrant_client = QdrantClient(path = qdrant_client_path)
+        self.qdrant_client = QdrantClient(url = "http://localhost:6333") #>>running qdrant on docker
+        self.embeddings = OllamaEmbeddings(model = model_name)
     def load_model(self, temperature_filter, model_name, memory, loader_framework):
         return
-    def process_document(self, uploaded_file):
-        file_content = uploaded_file.read()
-        buffered = io.BytesIO(file_content)
-        content = DocumentStream(
-            name = uploaded_file.name,
-            stream = buffered
-        )
-        with st.spinner("Converting file"):
-            pipeline_options = PdfPipelineOptions()
-            pipeline_options.do_ocr = True
-            pipeline_options.do_table_structure = True
-            pipeline_options.table_structure_options.do_cell_matching = True
-            doc_converter = DocumentConverter(
-                allowed_formats = [
-                    InputFormat.PDF,
-                    InputFormat.IMAGE,
-                    InputFormat.DOCX,
-                    InputFormat.HTML,
-                    InputFormat.PPTX,
-                    InputFormat.ASCIIDOC,
-                    InputFormat.MD,
-                ]
+    def process_document(self, uploaded_file, framework):
+        if framework == "Docling":
+            file_content = uploaded_file.read()
+            buffered = io.BytesIO(file_content)
+            content = DocumentStream(
+                name = uploaded_file.name,
+                stream = buffered
             )
-            result = doc_converter.convert(
-                content
-            )
-            return result
-    def save_artifacts(self, processed_doc):
+            with st.spinner("Converting file"):
+                pipeline_options = PdfPipelineOptions()
+                pipeline_options.do_ocr = True
+                pipeline_options.do_table_structure = True
+                pipeline_options.table_structure_options.do_cell_matching = True
+                self.doc_converter = DocumentConverter(
+                    allowed_formats = [
+                        InputFormat.PDF,
+                        InputFormat.IMAGE,
+                        InputFormat.DOCX,
+                        InputFormat.HTML,
+                        InputFormat.PPTX,
+                        InputFormat.ASCIIDOC,
+                        InputFormat.MD,
+                    ]
+                )
+                result = self.doc_converter.convert(
+                    content
+                )
+                return result
+    def save_artifacts_docling(self, processed_doc):
         with st.spinner("Saving artifacts"):
             processed_doc_dict = processed_doc.document.export_to_dict()
             for x in [
@@ -432,6 +441,27 @@ class DocumentAssistant:
                 element_html_filename = f"docling/documents/{processed_doc_dict['name']}/tables/table-{table_ix+1}.html"
                 with open(element_html_filename, "w") as fp:
                     fp.write(table.export_to_html())
+    def store_on_qdrant(self, processed_doc, COLLECTION_NAME):
+        #self.qdrant_client.set_model("sentence-transformers/all-MiniLM-L6-v2")
+        #self.qdrant_client.set_sparse_model("Qdrant/bm25")
+        self.qdrant_client.set_model("sentence-transformers/all-MiniLM-L6-v2")
+        self.qdrant_client.set_sparse_model("Qdrant/bm25")
+        documents, metadatas = [], []
+        for chunk in HierarchicalChunker().chunk(processed_doc.document):
+            documents.append(chunk.text)
+            metadatas.append(chunk.meta.export_json_dict())
+        self.qdrant_client.add(
+            COLLECTION_NAME, 
+            documents = documents, 
+            metadata = metadatas, 
+            batch_size = 64)
+    #def RAG(self, collection_name, query):
+        retrieved_docs = self.qdrant_client.query(
+            COLLECTION_NAME,
+            query_text = "what is docling about?",
+            limit = 10
+        )
+        return retrieved_docs
             
     
             
