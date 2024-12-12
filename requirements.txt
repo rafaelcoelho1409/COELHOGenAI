@@ -7,6 +7,7 @@ langchain-experimental
 langchain-community
 langchainhub
 langchain-qdrant
+langchain-text-splitters
 PyPDF2
 unstructured[pdf]
 chromadb

@@ -47,14 +47,24 @@ if loader_framework == "Docling":
             label = "Extract",
             use_container_width = True
         )
-    if submit_path:
-        if uploaded_file:
-            processed_doc = role.process_document(uploaded_file, loader_framework)
-            role.save_artifacts_docling(processed_doc)
-            retrieved_docs = role.store_on_qdrant(processed_doc, COLLECTION_NAME)
-            for x in retrieved_docs:
-                st.write(x)
-            st.stop()
+if submit_path:
+    if uploaded_file:
+        st.session_state["uploaded_file_content"] = uploaded_file.read()
+        st.session_state["uploaded_file_name"] = uploaded_file.name
+if not "uploaded_file" in st.session_state:
+    st.info("Upload a file to start using Document Assistant.")
+    st.stop()
+
+processed_doc = role.process_document(
+    st.session_state["uploaded_file_content"], 
+    st.session_state["uploaded_file_name"],
+    loader_framework)
+if loader_framework == "Docling":
+    role.save_artifacts_docling(processed_doc)
+role.store_on_qdrant(processed_doc, COLLECTION_NAME)
+#for x in retrieved_docs:
+#    st.write(x)
+#st.stop()
 
 
 for msg in st.session_state["history"].messages:
@@ -75,4 +85,10 @@ if prompt := st.chat_input():
         #    {"input": prompt}, 
         #    config)
         #st.write(response["response"])
-        #retrieved_docs = role.RAG(COLLECTION_NAME, prompt)
+        response = role.qdrant_client.query(
+            COLLECTION_NAME,
+            query_text = prompt,#"what is docling about?",
+            limit = 10
+        )
+        for x in response:
+            st.write(x)

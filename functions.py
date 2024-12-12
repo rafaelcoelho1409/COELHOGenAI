@@ -336,12 +336,12 @@ class DocumentAssistant:
         self.embeddings = OllamaEmbeddings(model = model_name)
     def load_model(self, temperature_filter, model_name, memory, loader_framework):
         return
-    def process_document(self, uploaded_file, framework):
+    def process_document(self, uploaded_file_content, uploaded_file_name, framework):
         if framework == "Docling":
-            file_content = uploaded_file.read()
-            buffered = io.BytesIO(file_content)
+            #file_content = uploaded_file.read()
+            buffered = io.BytesIO(uploaded_file_content)
             content = DocumentStream(
-                name = uploaded_file.name,
+                name = uploaded_file_name,#uploaded_file.name,
                 stream = buffered
             )
             with st.spinner("Converting file"):
@@ -367,6 +367,7 @@ class DocumentAssistant:
     def save_artifacts_docling(self, processed_doc):
         with st.spinner("Saving artifacts"):
             processed_doc_dict = processed_doc.document.export_to_dict()
+            processed_doc_md = processed_doc.document.export_to_markdown()
             for x in [
                 f"docling/documents/{processed_doc_dict['name']}",
                 f"docling/documents/{processed_doc_dict['name']}/images",
@@ -376,6 +377,10 @@ class DocumentAssistant:
                     os.makedirs(x)
                 except:
                     pass
+        with st.spinner("Saving document in markdown"):
+            #save doc in markdown
+            with open(f"docling/documents/{processed_doc_dict['name']}/{processed_doc_dict['name']}.md", "w") as outfile:
+                outfile.write(processed_doc_md)
         with st.spinner("Saving document in JSON"):
             #save doc in JSON
             with open(f"docling/documents/{processed_doc_dict['name']}/{processed_doc_dict['name']}.json", "w") as outfile:
@@ -456,12 +461,12 @@ class DocumentAssistant:
             metadata = metadatas, 
             batch_size = 64)
     #def RAG(self, collection_name, query):
-        retrieved_docs = self.qdrant_client.query(
-            COLLECTION_NAME,
-            query_text = "what is docling about?",
-            limit = 10
-        )
-        return retrieved_docs
+    #    retrieved_docs = self.qdrant_client.query(
+    #        COLLECTION_NAME,
+    #        query_text = query,#"what is docling about?",
+    #        limit = 10
+    #    )
+    #    return retrieved_docs
             
     
             
