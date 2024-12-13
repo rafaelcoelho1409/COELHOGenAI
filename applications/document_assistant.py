@@ -5,7 +5,9 @@ from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from functions import (
     DocumentAssistant,
     check_model_and_temperature,
-    initialize_shared_memory
+    initialize_shared_memory,
+    docling_process_document,
+    docling_save_artifacts
 )
 
 initialize_shared_memory()
@@ -22,12 +24,23 @@ loader_framework = st.sidebar.selectbox(
         "LangChain"
     ]
 )
+if loader_framework == "Docling":
+    docling_type = st.sidebar.selectbox(
+        label = "Type",
+        options = [
+            "File",
+            "URL"
+        ]
+    )
 
 try:
     os.mkdir("qdrant_langchain")
 except:
     pass
-role = DocumentAssistant(st.session_state["model_name"], "qdrant_langchain")
+role = DocumentAssistant(
+    st.session_state["model_name"], 
+    #"qdrant_langchain"
+    )
 model = role.load_model(
     st.session_state["temperature_filter"], 
     st.session_state["model_name"],
@@ -39,32 +52,52 @@ model = role.load_model(
 COLLECTION_NAME = "docling"
 available_filetypes = ["pdf", "jpg", "jpeg", "png", "webp", "docx", "html", "pptx", "adoc", "asciidoc", "md"]
 if loader_framework == "Docling":
-    with st.sidebar.form("Upload file to analyze"):
-        uploaded_file = st.file_uploader(
-            "Upload file", 
-            type = available_filetypes)
-        submit_path = st.form_submit_button(
-            label = "Extract",
-            use_container_width = True
-        )
-if submit_path:
-    if uploaded_file:
-        st.session_state["uploaded_file_content"] = uploaded_file.read()
-        st.session_state["uploaded_file_name"] = uploaded_file.name
-if not "uploaded_file" in st.session_state:
-    st.info("Upload a file to start using Document Assistant.")
+    if docling_type == "File":
+        with st.sidebar.form("Upload file to analyze"):
+            uploaded_file = st.file_uploader(
+                "Upload file", 
+                type = available_filetypes)
+            submit = st.form_submit_button(
+                label = "Extract",
+                use_container_width = True
+            )
+    elif docling_type == "URL":
+        with st.sidebar.form("Set a URL to analyze"):
+            url = st.text_input(
+                label = "URL"
+            )
+            submit = st.form_submit_button(
+                label = "Extract",
+                use_container_width = True
+            )
+    if submit:
+        if docling_type == "File":
+            if uploaded_file:
+                st.session_state["uploaded_file_content"] = uploaded_file.read()
+                st.session_state["uploaded_file_name"] = uploaded_file.name
+        elif docling_type == "URL":
+            st.session_state["url"] = url
+
+
+if (not "uploaded_file_content" in st.session_state) and (not "url" in st.session_state):
+    st.info("Upload a file or set a URL to start using Document Assistant.")
     st.stop()
 
-processed_doc = role.process_document(
-    st.session_state["uploaded_file_content"], 
-    st.session_state["uploaded_file_name"],
-    loader_framework)
+
 if loader_framework == "Docling":
-    role.save_artifacts_docling(processed_doc)
-role.store_on_qdrant(processed_doc, COLLECTION_NAME)
-#for x in retrieved_docs:
-#    st.write(x)
-#st.stop()
+    if docling_type == "File":
+        processed_doc = docling_process_document(
+            docling_type,
+            uploaded_file_content = st.session_state["uploaded_file_content"], 
+            uploaded_file_name = st.session_state["uploaded_file_name"]
+            )
+    elif docling_type == "URL":
+        processed_doc = docling_process_document(
+            docling_type,
+            url = st.session_state["url"]
+        )
+    docling_save_artifacts(processed_doc)
+    role.store_on_qdrant(processed_doc, COLLECTION_NAME)
 
 
 for msg in st.session_state["history"].messages:
@@ -81,14 +114,22 @@ if prompt := st.chat_input():
                 "session_id": "any"
                 }, 
             "callbacks": [st_callback]}
-        #response = model.invoke(
-        #    {"input": prompt}, 
-        #    config)
-        #st.write(response["response"])
-        response = role.qdrant_client.query(
+        rag_query = role.qdrant_client.query(
             COLLECTION_NAME,
-            query_text = prompt,#"what is docling about?",
-            limit = 10
+            query_text = prompt,
+            limit = 20
         )
-        for x in response:
-            st.write(x)
+        #rag_result = str(rag_query)
+        rag_result = [
+            {'document': x.document,
+             'filename': x.metadata["origin"]["filename"]} for x in rag_query]
+        #st.write(rag_result)
+        #st.write([dir(x) for x in rag_query])
+        #role.prompt = role.prompt.format(context = rag_result)
+        response = model.invoke(
+            {
+                "context": rag_result,
+                "input": prompt
+                }, 
+            config)
+        st.write(response["text"])

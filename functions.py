@@ -144,6 +144,131 @@ def prompt_informations(PROMPT_NAME, PROMPT):
         st.write(PROMPT.template)
     st.markdown(prompt_description)
 
+
+@st.cache_resource
+def docling_process_document(
+    document_type, 
+    uploaded_file_content = None, 
+    uploaded_file_name = None,
+    url = None
+    ):
+    if document_type == "File":
+        buffered = io.BytesIO(uploaded_file_content)
+        content = DocumentStream(
+            name = uploaded_file_name,
+            stream = buffered
+        )
+        with st.spinner("Converting file"):
+            pipeline_options = PdfPipelineOptions()
+            pipeline_options.do_ocr = True
+            pipeline_options.do_table_structure = True
+            pipeline_options.table_structure_options.do_cell_matching = True
+            doc_converter = DocumentConverter(
+                allowed_formats = [
+                    InputFormat.PDF,
+                    InputFormat.IMAGE,
+                    InputFormat.DOCX,
+                    InputFormat.HTML,
+                    InputFormat.PPTX,
+                    InputFormat.ASCIIDOC,
+                    InputFormat.MD,
+                ]
+            )
+            result = doc_converter.convert(
+                content
+            )
+            return result
+    elif document_type == "URL":
+        doc_converter = DocumentConverter()
+        result = doc_converter.convert(url)
+        return result
+    
+
+@st.cache_resource
+def docling_save_artifacts(_processed_doc):
+    with st.spinner("Saving artifacts"):
+        processed_doc_dict = _processed_doc.document.export_to_dict()
+        processed_doc_md = _processed_doc.document.export_to_markdown()
+        for x in [
+            f"docling/documents/{processed_doc_dict['name']}",
+            f"docling/documents/{processed_doc_dict['name']}/images",
+            f"docling/documents/{processed_doc_dict['name']}/tables"
+        ]:
+            try:
+                os.makedirs(x)
+            except:
+                pass
+    with st.spinner("Saving document in markdown"):
+        #save doc in markdown
+        with open(f"docling/documents/{processed_doc_dict['name']}/{processed_doc_dict['name']}.md", "w") as outfile:
+            outfile.write(processed_doc_md)
+    with st.spinner("Saving document in JSON"):
+        #save doc in JSON
+        with open(f"docling/documents/{processed_doc_dict['name']}/{processed_doc_dict['name']}.json", "w") as outfile:
+            json.dump(processed_doc_dict, outfile)
+    with st.spinner("Saving images from document"):
+        #save page images
+        for page_no, page in _processed_doc.document.pages.items():
+            page_no = page.page_no
+            page_image_filename = f"docling/documents/{processed_doc_dict['name']}/images/{page_no}.png"
+            try:
+                with open(page_image_filename, "wb") as outfile:
+                    page.image.pil_image.save(outfile, format = "PNG")
+            except:
+                pass
+    with st.spinner("Saving images of figures and tables from document"):
+        #save images of figures and tables
+        table_counter = 0
+        picture_counter = 0
+        for element, _level in _processed_doc.document.iterate_items():
+            if isinstance(element, TableItem):
+                table_counter += 1
+                element_image_filename = f"docling/documents/{processed_doc_dict['name']}/images/table-{table_counter}.png"
+                try:
+                    with open(element_image_filename, "wb") as outfile:
+                        element.get_image(_processed_doc.document).save(outfile, format = "PNG")
+                except:
+                    pass
+            if isinstance(element, PictureItem):
+                picture_counter += 1
+                element_image_filename = f"docling/documents/{processed_doc_dict['name']}/images/picture-{picture_counter}.png"
+                try:
+                    with open(element_image_filename, "wb") as outfile:
+                        element.get_image(_processed_doc.document).save(outfile, "PNG")
+                except:
+                    pass
+    with st.spinner("Saving document in Markdown and HTML"):
+        try:
+            # Save markdown with embedded pictures
+            md_filename = f"docling/documents/{processed_doc_dict['name']}-with-images.md"
+            _processed_doc.document.save_as_markdown(md_filename, image_mode = ImageRefMode.EMBEDDED)
+        except:
+            pass
+        try:
+            # Save markdown with externally referenced pictures
+            md_filename = f"docling/documents/{processed_doc_dict['name']}-with-image-refs.md"
+            _processed_doc.document.save_as_markdown(md_filename, image_mode = ImageRefMode.REFERENCED)
+        except:
+            pass            
+        try:
+            # Save HTML with externally referenced pictures
+            html_filename = f"docling/documents/{processed_doc_dict['name']}-with-image-refs.html"
+            _processed_doc.document.save_as_html(html_filename, image_mode = ImageRefMode.REFERENCED)
+        except:
+            pass
+    with st.spinner("Saving tables from document"):
+        # Export tables
+        for table_ix, table in enumerate(_processed_doc.document.tables):
+            table_df: pd.DataFrame = table.export_to_dataframe()
+            # Save the table as csv
+            element_csv_filename = f"docling/documents/{processed_doc_dict['name']}/tables/table-{table_ix+1}.csv"
+            table_df.to_csv(element_csv_filename)
+            # Save the table as html
+            element_html_filename = f"docling/documents/{processed_doc_dict['name']}/tables/table-{table_ix+1}.html"
+            with open(element_html_filename, "w") as fp:
+                fp.write(table.export_to_html())
+
+
 #>>>-------------------------------------------------<<<
 #FUNCTIONS
 #>>>-------------------------------------------------<<<
@@ -187,9 +312,11 @@ def initialize_shared_memory():
     if "shared_memory" not in st.session_state:
         st.session_state["shared_memory"] = ConversationBufferMemory(
             memory_key = "chat_history", 
+            input_key = "input",
             return_messages = True,
             chat_memory = st.session_state["history"]
         )
+
 
 #>>>-------------------------------------------------<<<
 #CLASSES
@@ -227,11 +354,6 @@ class InformationRetrieval:
             temperature = temperature_filter
         )
         if tools != []:
-            #tools = load_tools(
-            #    tool_names = tool_names,
-            #    llm = llm,
-            #    allow_dangerous_tools = True
-            #)
             return initialize_agent(
                 tools = tools,
                 llm = llm,
@@ -330,125 +452,55 @@ class PromptEngineering:
     
 
 class DocumentAssistant:
-    def __init__(self, model_name, qdrant_client_path):
-        #self.qdrant_client = QdrantClient(path = qdrant_client_path)
+    def __init__(self, model_name):
         self.qdrant_client = QdrantClient(url = "http://localhost:6333") #>>running qdrant on docker
         self.embeddings = OllamaEmbeddings(model = model_name)
+        self.template = """
+            You are an assistant for question-answering tasks. 
+            Use the following pieces of retrieved context to answer the question. 
+            If you don't know the answer, just say that you don't know. 
+            The document chunks comes splitted in two parts: 
+            - the 'document' part, with the chunk
+            - the 'filename' part, with the name of the file
+            Consider the chunks provided in the context area as parts 
+            of the original document.
+
+            Context: {context}
+            
+            User question: {input}
+            
+            Previous conversation: {chat_history}
+            """
+        #self.prompt = ChatPromptTemplate.from_template(self.template)
+        self.prompt = PromptTemplate(
+            input_variables = [
+                "context", 
+                "chat_history", 
+                "input"
+                ],
+            template = self.template
+        )
+        #self.prompt_dict = {
+        #    "input_variables": [
+        #        "context", 
+        #        "chat_history",
+        #        "input"
+        #        ],
+        #    "template": self.template
+        #}
+        #self.prompt = PromptTemplate(**self.prompt_dict)
     def load_model(self, temperature_filter, model_name, memory, loader_framework):
-        return
-    def process_document(self, uploaded_file_content, uploaded_file_name, framework):
-        if framework == "Docling":
-            #file_content = uploaded_file.read()
-            buffered = io.BytesIO(uploaded_file_content)
-            content = DocumentStream(
-                name = uploaded_file_name,#uploaded_file.name,
-                stream = buffered
-            )
-            with st.spinner("Converting file"):
-                pipeline_options = PdfPipelineOptions()
-                pipeline_options.do_ocr = True
-                pipeline_options.do_table_structure = True
-                pipeline_options.table_structure_options.do_cell_matching = True
-                self.doc_converter = DocumentConverter(
-                    allowed_formats = [
-                        InputFormat.PDF,
-                        InputFormat.IMAGE,
-                        InputFormat.DOCX,
-                        InputFormat.HTML,
-                        InputFormat.PPTX,
-                        InputFormat.ASCIIDOC,
-                        InputFormat.MD,
-                    ]
-                )
-                result = self.doc_converter.convert(
-                    content
-                )
-                return result
-    def save_artifacts_docling(self, processed_doc):
-        with st.spinner("Saving artifacts"):
-            processed_doc_dict = processed_doc.document.export_to_dict()
-            processed_doc_md = processed_doc.document.export_to_markdown()
-            for x in [
-                f"docling/documents/{processed_doc_dict['name']}",
-                f"docling/documents/{processed_doc_dict['name']}/images",
-                f"docling/documents/{processed_doc_dict['name']}/tables"
-            ]:
-                try:
-                    os.makedirs(x)
-                except:
-                    pass
-        with st.spinner("Saving document in markdown"):
-            #save doc in markdown
-            with open(f"docling/documents/{processed_doc_dict['name']}/{processed_doc_dict['name']}.md", "w") as outfile:
-                outfile.write(processed_doc_md)
-        with st.spinner("Saving document in JSON"):
-            #save doc in JSON
-            with open(f"docling/documents/{processed_doc_dict['name']}/{processed_doc_dict['name']}.json", "w") as outfile:
-                json.dump(processed_doc_dict, outfile)
-        with st.spinner("Saving images from document"):
-            #save page images
-            for page_no, page in processed_doc.document.pages.items():
-                page_no = page.page_no
-                page_image_filename = f"docling/documents/{processed_doc_dict['name']}/images/{page_no}.png"
-                try:
-                    with open(page_image_filename, "wb") as outfile:
-                        page.image.pil_image.save(outfile, format = "PNG")
-                except:
-                    pass
-        with st.spinner("Saving images of figures and tables from document"):
-            #save images of figures and tables
-            table_counter = 0
-            picture_counter = 0
-            for element, _level in processed_doc.document.iterate_items():
-                if isinstance(element, TableItem):
-                    table_counter += 1
-                    element_image_filename = f"docling/documents/{processed_doc_dict['name']}/images/table-{table_counter}.png"
-                    try:
-                        with open(element_image_filename, "wb") as outfile:
-                            element.get_image(processed_doc.document).save(outfile, format = "PNG")
-                    except:
-                        pass
-                if isinstance(element, PictureItem):
-                    picture_counter += 1
-                    element_image_filename = f"docling/documents/{processed_doc_dict['name']}/images/picture-{picture_counter}.png"
-                    try:
-                        with open(element_image_filename, "wb") as outfile:
-                            element.get_image(processed_doc.document).save(outfile, "PNG")
-                    except:
-                        pass
-        with st.spinner("Saving document in Markdown and HTML"):
-            try:
-                # Save markdown with embedded pictures
-                md_filename = f"docling/documents/{processed_doc_dict['name']}-with-images.md"
-                processed_doc.document.save_as_markdown(md_filename, image_mode = ImageRefMode.EMBEDDED)
-            except:
-                pass
-            try:
-                # Save markdown with externally referenced pictures
-                md_filename = f"docling/documents/{processed_doc_dict['name']}-with-image-refs.md"
-                processed_doc.document.save_as_markdown(md_filename, image_mode = ImageRefMode.REFERENCED)
-            except:
-                pass            
-            try:
-                # Save HTML with externally referenced pictures
-                html_filename = f"docling/documents/{processed_doc_dict['name']}-with-image-refs.html"
-                processed_doc.document.save_as_html(html_filename, image_mode = ImageRefMode.REFERENCED)
-            except:
-                pass
-        with st.spinner("Saving tables from document"):
-            # Export tables
-            for table_ix, table in enumerate(processed_doc.document.tables):
-                table_df: pd.DataFrame = table.export_to_dataframe()
-                # Save the table as csv
-                element_csv_filename = f"docling/documents/{processed_doc_dict['name']}/tables/table-{table_ix+1}.csv"
-                table_df.to_csv(element_csv_filename)
-                # Save the table as html
-                element_html_filename = f"docling/documents/{processed_doc_dict['name']}/tables/table-{table_ix+1}.html"
-                with open(element_html_filename, "w") as fp:
-                    fp.write(table.export_to_html())
+        llm = ChatOllama(
+                model = model_name, 
+                temperature = temperature_filter)
+        conversation = LLMChain(
+            llm = llm,
+            prompt = self.prompt,
+            verbose = True,
+            memory = memory,
+        )
+        return conversation
     def store_on_qdrant(self, processed_doc, COLLECTION_NAME):
-        #self.qdrant_client.set_model("sentence-transformers/all-MiniLM-L6-v2")
-        #self.qdrant_client.set_sparse_model("Qdrant/bm25")
         self.qdrant_client.set_model("sentence-transformers/all-MiniLM-L6-v2")
         self.qdrant_client.set_sparse_model("Qdrant/bm25")
         documents, metadatas = [], []
@@ -460,13 +512,6 @@ class DocumentAssistant:
             documents = documents, 
             metadata = metadatas, 
             batch_size = 64)
-    #def RAG(self, collection_name, query):
-    #    retrieved_docs = self.qdrant_client.query(
-    #        COLLECTION_NAME,
-    #        query_text = query,#"what is docling about?",
-    #        limit = 10
-    #    )
-    #    return retrieved_docs
             
     
             
