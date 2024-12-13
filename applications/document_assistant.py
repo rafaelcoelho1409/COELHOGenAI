@@ -17,15 +17,18 @@ if model_temperature_checker == False:
     st.info("Choose model and temperature to start running COELHO GenAI models.")
     st.stop()
 
-loader_framework = st.sidebar.selectbox(
-    label = "Document Loader Framework",
+
+loaders_filters = st.sidebar.container()
+loaders_filters_grid = loaders_filters.columns(2)
+loader_framework = loaders_filters_grid[0].selectbox(
+    label = "Document Loader",
     options = [
         "Docling",
         "LangChain"
     ]
 )
 if loader_framework == "Docling":
-    docling_type = st.sidebar.selectbox(
+    docling_type = loaders_filters_grid[1].selectbox(
         label = "Type",
         options = [
             "File",
@@ -78,10 +81,14 @@ if loader_framework == "Docling":
         elif docling_type == "URL":
             st.session_state["url"] = url
 
-
-if (not "uploaded_file_content" in st.session_state) and (not "url" in st.session_state):
-    st.info("Upload a file or set a URL to start using Document Assistant.")
-    st.stop()
+if docling_type == "File":
+    if not "uploaded_file_content" in st.session_state:
+        st.info("Upload a file to start using Document Assistant.")
+        st.stop()
+elif docling_type == "URL":
+    if not "url" in st.session_state:
+        st.info("Set a URL to start using Document Assistant.")
+        st.stop()
 
 
 if loader_framework == "Docling":
