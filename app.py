@@ -33,10 +33,6 @@ data_science = st.Page(
 #    "applications/prompt_engineering.py", 
 #    title = "Prompt Engineering", 
 #    icon = ":material/edit:")
-pdf_assistant = st.Page(
-    "applications/pdf_assistant.py", 
-    title = "PDF Assistant", 
-    icon = ":material/edit:")
 software_development = st.Page(
     "applications/software_development.py", 
     title = "Software Development", 
@@ -59,7 +55,6 @@ pg = st.navigation({
         data_science,
         #prompt_engineering,
         document_assistant,
-        pdf_assistant,
         software_development,
         plan_and_solve,
     ]

@@ -5,6 +5,7 @@ import ollama
 import os
 import io
 import json
+from uuid import uuid4
 from pandasai import SmartDataframe
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from langchain_community.agent_toolkits.load_tools import load_tools
@@ -22,6 +23,7 @@ from langchain_core.prompts.chat import (
     SystemMessagePromptTemplate
 )
 from langchain_core.tools import Tool
+from langchain_core.documents import Document
 from langchain.memory.buffer import ConversationBufferMemory
 from langchain.chains.conversation.base import ConversationChain
 from langchain.chains import LLMChain
@@ -44,12 +46,13 @@ from langchain_experimental.plan_and_execute import (
     load_agent_executor,
     PlanAndExecute
 )
+from langchain_text_splitters.character import RecursiveCharacterTextSplitter
+from langchain_qdrant import QdrantVectorStore
 from docling.datamodel.base_models import DocumentStream, InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter
 from docling_core.types.doc import ImageRefMode, PictureItem, TableItem
 from docling_core.transforms.chunker import HierarchicalChunker 
-from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
 
@@ -269,6 +272,30 @@ def docling_save_artifacts(_processed_doc):
                 fp.write(table.export_to_html())
 
 
+@st.cache_resource
+def store_on_qdrant(_client, _processed_doc, COLLECTION_NAME, model_name):
+    if not _client.collection_exists("document_assistant"):
+        _client.create_collection(
+            collection_name = "document_assistant",
+            vectors_config = VectorParams(
+                size = 3072, 
+                distance = Distance.COSINE),
+        )
+    #self.qdrant_client.delete_collection("document_assistant")
+    vector_store = QdrantVectorStore(
+        client = _client,
+        collection_name = "document_assistant",
+        embedding = OllamaEmbeddings(model = model_name)
+    )
+    document = Document(page_content = _processed_doc.document.export_to_markdown())
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size = 1000,
+        chunk_overlap = 200,
+    )
+    splits = text_splitter.split_documents([document])
+    ids = [str(uuid4()) for _ in range(len(splits))]
+    vector_store.add_documents(documents = splits, ids = ids)
+    return vector_store
 #>>>-------------------------------------------------<<<
 #FUNCTIONS
 #>>>-------------------------------------------------<<<
@@ -453,17 +480,16 @@ class PromptEngineering:
 
 class DocumentAssistant:
     def __init__(self, model_name):
-        self.qdrant_client = QdrantClient(url = "http://localhost:6333") #>>running qdrant on docker
+        #self.qdrant_client = QdrantClient(url = "http://localhost:6333") #>>running qdrant on docker
+        self.qdrant_client = QdrantClient(":memory:")
         self.embeddings = OllamaEmbeddings(model = model_name)
         self.template = """
             You are an assistant for question-answering tasks. 
             Use the following pieces of retrieved context to answer the question. 
             If you don't know the answer, just say that you don't know. 
-            The document chunks comes splitted in two parts: 
-            - the 'document' part, with the chunk
-            - the 'filename' part, with the name of the file
             Consider the chunks provided in the context area as parts 
             of the original document.
+            Don't cite that you read the document chunks, only answer the user question directly.
 
             Context: {context}
             
@@ -471,7 +497,6 @@ class DocumentAssistant:
             
             Previous conversation: {chat_history}
             """
-        #self.prompt = ChatPromptTemplate.from_template(self.template)
         self.prompt = PromptTemplate(
             input_variables = [
                 "context", 
@@ -480,15 +505,7 @@ class DocumentAssistant:
                 ],
             template = self.template
         )
-        #self.prompt_dict = {
-        #    "input_variables": [
-        #        "context", 
-        #        "chat_history",
-        #        "input"
-        #        ],
-        #    "template": self.template
-        #}
-        #self.prompt = PromptTemplate(**self.prompt_dict)
+
     def load_model(self, temperature_filter, model_name, memory, loader_framework):
         llm = ChatOllama(
                 model = model_name, 
@@ -500,89 +517,8 @@ class DocumentAssistant:
             memory = memory,
         )
         return conversation
-    def store_on_qdrant(self, processed_doc, COLLECTION_NAME):
-        self.qdrant_client.set_model("sentence-transformers/all-MiniLM-L6-v2")
-        self.qdrant_client.set_sparse_model("Qdrant/bm25")
-        documents, metadatas = [], []
-        for chunk in HierarchicalChunker().chunk(processed_doc.document):
-            documents.append(chunk.text)
-            metadatas.append(chunk.meta.export_json_dict())
-        self.qdrant_client.add(
-            COLLECTION_NAME, 
-            documents = documents, 
-            metadata = metadatas, 
-            batch_size = 64)
-            
-    
-            
-
-
-class PDFAssistant:
-    def __init__(self, llm, model_name, uploaded_file):
-        self.llm = llm
-        self.uploaded_file = uploaded_file
-        self.embeddings = OllamaEmbeddings(model = model_name)
-    def pdf_read(self, pdf_doc):
-        temp_file = "./temp.pdf"
-        with open(temp_file, "wb") as file:
-            file.write(pdf_doc.getvalue())
-            file_name = pdf_doc.name
-        loader = UnstructuredFileLoader(temp_file, strategy = "fast")
-        data = loader.load()
-        text = ""
-        for document in data:
-            text += document.page_content
-        os.remove("temp.pdf")
-        return text
-    def get_chunks(self, text):
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size = 1000, chunk_overlap = 0)
-        chunks = text_splitter.split_text(text)
-        return chunks
-    def vector_store(self, text_chunks):
-        vector_store = Chroma.from_texts(
-            text_chunks, embedding = self.embeddings)
-        vector_store.save_local("chroma_db")
-    def load_model(self, tools):
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system",
-                    """You are a helpful assistant. Answer the question as detailed 
-                    as possible from the provided context, 
-                    make sure to provide all the details, 
-                    if the answer is not in provided context just say, 
-                    "answer is not available in the context", don't provide the wrong answer""",
-                ),
-                ("placeholder", "{chat_history}"),
-                ("human", "{input}"),
-                ("placeholder", "{agent_scratchpad}"),
-            ]
-        )
-        agent = create_tool_calling_agent(
-            self.llm, 
-            [tools], 
-            prompt)
-        if tools is not None:
-            agent_executor = AgentExecutor(
-                agent = agent, 
-                tools = [tools], 
-                verbose = True)
-        else:
-            agent_executor = AgentExecutor(
-                agent = agent, 
-                verbose = True)
-        return agent_executor
-    def process_user_input(self, user_question):
-        new_db = Chroma.load_local(
-            "chroma_db", 
-            self.embeddings,
-            allow_dangerous_deserialization = True)
-        retriever = new_db.as_retriever()
-        retrieval_chain = create_retriever_tool(
-            retriever,
-            "pdf_extractor",
-            "This tool is to give answer to queries from the pdf")
-        return retrieval_chain
+        
+        
     
 class SoftwareDevelopment:
     def __init__(self):

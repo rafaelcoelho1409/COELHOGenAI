@@ -7,7 +7,8 @@ from functions import (
     check_model_and_temperature,
     initialize_shared_memory,
     docling_process_document,
-    docling_save_artifacts
+    docling_save_artifacts,
+    store_on_qdrant
 )
 
 initialize_shared_memory()
@@ -80,31 +81,29 @@ if loader_framework == "Docling":
                 st.session_state["uploaded_file_name"] = uploaded_file.name
         elif docling_type == "URL":
             st.session_state["url"] = url
-
-if docling_type == "File":
-    if not "uploaded_file_content" in st.session_state:
-        st.info("Upload a file to start using Document Assistant.")
-        st.stop()
-elif docling_type == "URL":
-    if not "url" in st.session_state:
-        st.info("Set a URL to start using Document Assistant.")
-        st.stop()
-
-
-if loader_framework == "Docling":
     if docling_type == "File":
+        if not "uploaded_file_content" in st.session_state:
+            st.info("Upload a file to start using Document Assistant.")
+            st.stop()
         processed_doc = docling_process_document(
             docling_type,
             uploaded_file_content = st.session_state["uploaded_file_content"], 
             uploaded_file_name = st.session_state["uploaded_file_name"]
             )
     elif docling_type == "URL":
+        if not "url" in st.session_state:
+            st.info("Set a URL to start using Document Assistant.")
+            st.stop()
         processed_doc = docling_process_document(
             docling_type,
             url = st.session_state["url"]
         )
     docling_save_artifacts(processed_doc)
-    role.store_on_qdrant(processed_doc, COLLECTION_NAME)
+    vector_store = store_on_qdrant(
+        role.qdrant_client,
+        processed_doc, 
+        COLLECTION_NAME, 
+        st.session_state["model_name"])
 
 
 for msg in st.session_state["history"].messages:
@@ -121,18 +120,8 @@ if prompt := st.chat_input():
                 "session_id": "any"
                 }, 
             "callbacks": [st_callback]}
-        rag_query = role.qdrant_client.query(
-            COLLECTION_NAME,
-            query_text = prompt,
-            limit = 20
-        )
-        #rag_result = str(rag_query)
-        rag_result = [
-            {'document': x.document,
-             'filename': x.metadata["origin"]["filename"]} for x in rag_query]
-        #st.write(rag_result)
-        #st.write([dir(x) for x in rag_query])
-        #role.prompt = role.prompt.format(context = rag_result)
+        rag_query = vector_store.similarity_search(query = prompt, k = 3)
+        rag_result = "\n\n".join(x.page_content for x in rag_query)
         response = model.invoke(
             {
                 "context": rag_result,
