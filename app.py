@@ -1,4 +1,5 @@
 import streamlit as st
+from streamlit_extras.grid import grid
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from langchain.memory.buffer import ConversationBufferMemory
 from functions import (
@@ -62,12 +63,19 @@ pg = st.navigation({
 
 
 st.sidebar.title(pg.title)
-settings_button = st.sidebar.button(
+grid_buttons = st.sidebar.columns(2)
+settings_button = grid_buttons[0].button(
     label = "Settings",
     use_container_width = True
 )
 if settings_button:
     settings()
+clear_memory_button = grid_buttons[1].button(
+    label = "Clear memory",
+    use_container_width = True
+)
+st.sidebar.divider()
+    
 
 
 pg.run()
@@ -86,3 +94,5 @@ with st.sidebar.expander("**Informations**", expanded = True):
 
 
 initialize_shared_memory()
+if clear_memory_button:
+    st.session_state["shared_memory"].clear()

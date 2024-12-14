@@ -273,7 +273,7 @@ def docling_save_artifacts(_processed_doc):
 
 
 @st.cache_resource
-def store_on_qdrant(_client, _processed_doc, COLLECTION_NAME, model_name):
+def docling_store_on_qdrant(_client, _processed_doc, COLLECTION_NAME, model_name):
     if not _client.collection_exists("document_assistant"):
         _client.create_collection(
             collection_name = "document_assistant",
@@ -489,7 +489,9 @@ class DocumentAssistant:
             If you don't know the answer, just say that you don't know. 
             Consider the chunks provided in the context area as parts 
             of the original document.
-            Don't cite that you read the document chunks, only answer the user question directly.
+            Don't cite that you read the document chunks, only answer the user question.
+            If possible, you can use your own information to answer the user question,
+            if it's not available directly on the document furnished.
 
             Context: {context}
             

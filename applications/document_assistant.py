@@ -8,7 +8,7 @@ from functions import (
     initialize_shared_memory,
     docling_process_document,
     docling_save_artifacts,
-    store_on_qdrant
+    docling_store_on_qdrant
 )
 
 initialize_shared_memory()
@@ -25,7 +25,7 @@ loader_framework = loaders_filters_grid[0].selectbox(
     label = "Document Loader",
     options = [
         "Docling",
-        "LangChain"
+        #"LangChain"
     ]
 )
 if loader_framework == "Docling":
@@ -99,7 +99,7 @@ if loader_framework == "Docling":
             url = st.session_state["url"]
         )
     docling_save_artifacts(processed_doc)
-    vector_store = store_on_qdrant(
+    vector_store = docling_store_on_qdrant(
         role.qdrant_client,
         processed_doc, 
         COLLECTION_NAME, 
