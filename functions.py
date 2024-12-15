@@ -52,7 +52,6 @@ from docling.datamodel.base_models import DocumentStream, InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter
 from docling_core.types.doc import ImageRefMode, PictureItem, TableItem
-from docling_core.transforms.chunker import HierarchicalChunker 
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
 
@@ -92,6 +91,35 @@ def settings():
             value = 0.00,
             step = 0.01
         )
+        toggle_filters = st.columns(3)
+        try:
+            memory_filter = toggle_filters[0].toggle(
+                label = "Memory",
+                value = st.session_state["memory_filter"]
+            )
+        except:
+            memory_filter = toggle_filters[0].toggle(
+                label = "Memory",
+                value = True
+            )
+        try:
+            vector_database_filter = toggle_filters[1].toggle(
+                label = "Vector database",
+                value = st.session_state["vector_database_filter"]
+            )
+        except:
+            vector_database_filter = toggle_filters[1].toggle(
+                label = "Vector database",
+            )
+        try:
+            rag_filter = toggle_filters[2].toggle(
+                label = "RAG",
+                value = st.session_state["rag_filter"]
+            )
+        except:
+            rag_filter = toggle_filters[2].toggle(
+                label = "RAG",
+            )
         submit_button = st.form_submit_button(
                 label = "Run model",
                 use_container_width = True
@@ -99,6 +127,9 @@ def settings():
         if submit_button:
             st.session_state["model_name"] = models_filter
             st.session_state["temperature_filter"] = temperature_filter
+            st.session_state["memory_filter"] = memory_filter
+            st.session_state["vector_database_filter"] = vector_database_filter
+            st.session_state["rag_filter"] = rag_filter
             st.rerun()
 
 @st.dialog("Prompt settings")
@@ -274,18 +305,20 @@ def docling_save_artifacts(_processed_doc):
 
 @st.cache_resource
 def docling_store_on_qdrant(_client, _processed_doc, COLLECTION_NAME, model_name):
+    embeddings = OllamaEmbeddings(model = model_name)
+    embedding_vector = embeddings.embed_query("This is a test query")
     if not _client.collection_exists("document_assistant"):
         _client.create_collection(
             collection_name = "document_assistant",
             vectors_config = VectorParams(
-                size = 3072, 
-                distance = Distance.COSINE),
+                size = len(embedding_vector), 
+                distance = Distance.COSINE)
         )
     #self.qdrant_client.delete_collection("document_assistant")
     vector_store = QdrantVectorStore(
         client = _client,
         collection_name = "document_assistant",
-        embedding = OllamaEmbeddings(model = model_name)
+        embedding = embeddings,
     )
     document = Document(page_content = _processed_doc.document.export_to_markdown())
     text_splitter = RecursiveCharacterTextSplitter(
@@ -479,9 +512,19 @@ class PromptEngineering:
     
 
 class DocumentAssistant:
-    def __init__(self, model_name):
+    def __init__(self, model_name, vector_database_filter):
+        #remove .lock file
+        self.vector_database_path = {
+            True: os.path.join(
+                "databases",
+                model_name),
+            False: ":memory:"
+        }
+        lock_file = os.path.join(model_name, ".lock")
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
         #self.qdrant_client = QdrantClient(url = "http://localhost:6333") #>>running qdrant on docker
-        self.qdrant_client = QdrantClient(":memory:")
+        self.qdrant_client = QdrantClient(path = self.vector_database_path[vector_database_filter])
         self.embeddings = OllamaEmbeddings(model = model_name)
         self.template = """
             You are an assistant for question-answering tasks. 
@@ -492,6 +535,8 @@ class DocumentAssistant:
             Don't cite that you read the document chunks, only answer the user question.
             If possible, you can use your own information to answer the user question,
             if it's not available directly on the document furnished.
+            If there's no previous conversations context, you can answer the user question by
+            furnishing your own base knowledge.
 
             Context: {context}
             

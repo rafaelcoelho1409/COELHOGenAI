@@ -36,7 +36,7 @@ tools_dict = {
     "Wikidata": WikidataQueryRun(api_wrapper = WikidataAPIWrapper()),
     "Wikipedia": WikipediaQueryRun(api_wrapper = WikipediaAPIWrapper()),
     "Yahoo Finance News": YahooFinanceNewsTool(),
-    "YouTube Search": YouTubeSearchTool()
+    #"YouTube Search": YouTubeSearchTool()
 }
 tools_filter = st.sidebar.selectbox(
     label = "Tools",

@@ -38,4 +38,4 @@ if prompt := st.chat_input():
         response = model.invoke(
             {"input": prompt}, 
             config)
-        st.write(response)
+        st.write(response["output"])

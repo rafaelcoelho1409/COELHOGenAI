@@ -37,13 +37,10 @@ if loader_framework == "Docling":
         ]
     )
 
-try:
-    os.mkdir("qdrant_langchain")
-except:
-    pass
+
 role = DocumentAssistant(
-    st.session_state["model_name"], 
-    #"qdrant_langchain"
+    st.session_state["model_name"],
+    st.session_state["vector_database_filter"]
     )
 model = role.load_model(
     st.session_state["temperature_filter"], 
@@ -80,6 +77,9 @@ if loader_framework == "Docling":
                 st.session_state["uploaded_file_content"] = uploaded_file.read()
                 st.session_state["uploaded_file_name"] = uploaded_file.name
         elif docling_type == "URL":
+            if url == "":
+                st.error("Use a valid URL to start using Document Assistant.")
+                st.stop()
             st.session_state["url"] = url
     if docling_type == "File":
         if not "uploaded_file_content" in st.session_state:
@@ -120,8 +120,13 @@ if prompt := st.chat_input():
                 "session_id": "any"
                 }, 
             "callbacks": [st_callback]}
-        rag_query = vector_store.similarity_search(query = prompt, k = 3)
-        rag_result = "\n\n".join(x.page_content for x in rag_query)
+        if st.session_state["memory_filter"] == False:
+            st.session_state["shared_memory"].clear()
+        if st.session_state["rag_filter"] == True:
+            rag_query = vector_store.similarity_search(query = prompt, k = 10)
+            rag_result = "\n\n".join(x.page_content for x in rag_query)
+        else:
+            rag_result = processed_doc.document.export_to_markdown()
         response = model.invoke(
             {
                 "context": rag_result,
