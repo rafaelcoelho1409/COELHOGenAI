@@ -5,6 +5,8 @@ import ollama
 import os
 import io
 import json
+import subprocess
+import sys
 from uuid import uuid4
 from pandasai import SmartDataframe
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
@@ -125,6 +127,21 @@ def settings():
                 use_container_width = True
             )
         if submit_button:
+            if "model_name" in st.session_state:
+                if st.session_state["model_name"] != models_filter:
+                    subprocess.check_call([
+                        "ollama",
+                        "stop",
+                        st.session_state["model_name"]
+                    ],
+                    )
+            else:
+                subprocess.check_call([
+                    "ollama",
+                    "stop",
+                    models_filter
+                ],
+                )
             st.session_state["model_name"] = models_filter
             st.session_state["temperature_filter"] = temperature_filter
             st.session_state["memory_filter"] = memory_filter
@@ -177,6 +194,17 @@ def prompt_informations(PROMPT_NAME, PROMPT):
     elif type(PROMPT) == PromptTemplate:
         st.write(PROMPT.template)
     st.markdown(prompt_description)
+
+@st.dialog("Retrieved documents")
+def retrieved_documents(processed_doc, loader_framework):
+    st.markdown(f"**Retrieved documents**")
+    st.divider()
+    if loader_framework == "Docling":
+        rag_result = processed_doc.document.export_to_markdown()
+    elif loader_framework == "LangChain":
+        rag_result = "\n\n".join(x.page_content for x in processed_doc)
+    st.write(rag_result)
+
 
 
 @st.cache_resource
@@ -525,6 +553,7 @@ class DocumentAssistant:
                 model_name),
             False: ":memory:"
         }
+        #preventing qdrant error
         lock_file = os.path.join(model_name, ".lock")
         if os.path.exists(lock_file):
             os.remove(lock_file)
@@ -535,13 +564,7 @@ class DocumentAssistant:
             You are an assistant for question-answering tasks. 
             Use the following pieces of retrieved context to answer the question. 
             If you don't know the answer, just say that you don't know. 
-            Consider the chunks provided in the context area as parts 
-            of the original document.
-            Don't cite that you read the document chunks, only answer the user question.
-            If possible, you can use your own information to answer the user question,
-            if it's not available directly on the document furnished.
-            If there's no previous conversations context, you can answer the user question by
-            furnishing your own base knowledge.
+            Keep the answer concise.
 
             Context: {context}
             
@@ -589,8 +612,9 @@ class SoftwareDevelopment:
             llm = llm,
             memory = memory,
             tools = [
+                ShellTool(),
                 PythonREPLTool(),
-                ShellTool()],
+                ],
             verbose = True,
             agent_type = AgentType.ZERO_SHOT_REACT_DESCRIPTION,
             max_iterations = 5

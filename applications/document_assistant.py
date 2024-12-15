@@ -11,7 +11,8 @@ from functions import (
     initialize_shared_memory,
     docling_process_document,
     docling_save_artifacts,
-    store_on_qdrant
+    store_on_qdrant,
+    retrieved_documents
 )
 
 initialize_shared_memory()
@@ -22,8 +23,6 @@ if model_temperature_checker == False:
     st.stop()
 
 
-#loaders_filters = st.sidebar.container()
-#loaders_filters_grid = loaders_filters.columns(2)
 loader_framework = st.sidebar.selectbox(
     label = "Document Loader",
     options = [
@@ -114,8 +113,6 @@ elif loader_framework == "LangChain":
         index = document_loaders.__all__.index("WikipediaLoader")
     )
     st.sidebar.caption("LangChain Document Loaders (Experimental)")
-    st.title("Under construction")
-    st.sidebar.subheader(langchain_loader_type)
     loader = document_loaders.__getattr__(langchain_loader_type)
     args_empty = {
         name: param.default
@@ -128,10 +125,11 @@ elif loader_framework == "LangChain":
         if param.default is not param.empty
     }
     with st.sidebar.form(langchain_loader_type):
+        st.subheader(langchain_loader_type)
         for k, v in args_empty.items():
             globals()[f"{langchain_loader_type}__{k}"] = st.text_input(
                 label = k,
-                value = "" if v is inspect._empty else v#str(v).replace("<class 'inspect._empty'>", "")
+                value = "" if v is inspect._empty else v
             )
         st.divider()
         for k, v in args_not_empty.items():
@@ -174,6 +172,18 @@ elif loader_framework == "LangChain":
             st.error(e)
             st.stop()
 
+try:
+    view_retrieved_documents = st.sidebar.button(
+        label = "View retrieved documents",
+        use_container_width = True,
+    )
+    if view_retrieved_documents:
+        if loader_framework == "Docling":
+            retrieved_documents(processed_doc, loader_framework)
+        elif loader_framework == "LangChain":
+            retrieved_documents(st.session_state["langchain_processed_doc"], loader_framework)
+except:
+    pass
 
 for msg in st.session_state["history"].messages:
     st.chat_message(msg.type).write(msg.content)
@@ -198,7 +208,8 @@ if prompt := st.chat_input():
             if loader_framework == "Docling":
                 rag_result = processed_doc.document.export_to_markdown()
             elif loader_framework == "LangChain":
-                rag_result = "\n\n".join(x.page_content for x in st.session_state["langchain_processed_doc"])
+                rag_result = "\n\n".join(
+                    x.page_content for x in st.session_state["langchain_processed_doc"])
         response = model.invoke(
             {
                 "context": rag_result,
