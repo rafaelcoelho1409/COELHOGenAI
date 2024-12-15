@@ -1,14 +1,17 @@
 import streamlit as st
-import json
-import os
+import inspect
+import sys
+import subprocess
+import re
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
+from langchain_community import document_loaders
 from functions import (
     DocumentAssistant,
     check_model_and_temperature,
     initialize_shared_memory,
     docling_process_document,
     docling_save_artifacts,
-    docling_store_on_qdrant
+    store_on_qdrant
 )
 
 initialize_shared_memory()
@@ -19,23 +22,15 @@ if model_temperature_checker == False:
     st.stop()
 
 
-loaders_filters = st.sidebar.container()
-loaders_filters_grid = loaders_filters.columns(2)
-loader_framework = loaders_filters_grid[0].selectbox(
+#loaders_filters = st.sidebar.container()
+#loaders_filters_grid = loaders_filters.columns(2)
+loader_framework = st.sidebar.selectbox(
     label = "Document Loader",
     options = [
         "Docling",
-        #"LangChain"
+        "LangChain"
     ]
 )
-if loader_framework == "Docling":
-    docling_type = loaders_filters_grid[1].selectbox(
-        label = "Type",
-        options = [
-            "File",
-            "URL"
-        ]
-    )
 
 
 role = DocumentAssistant(
@@ -53,6 +48,13 @@ model = role.load_model(
 COLLECTION_NAME = "docling"
 available_filetypes = ["pdf", "jpg", "jpeg", "png", "webp", "docx", "html", "pptx", "adoc", "asciidoc", "md"]
 if loader_framework == "Docling":
+    docling_type = st.sidebar.selectbox(
+        label = "Type",
+        options = [
+            "File",
+            "URL"
+        ]
+    )
     if docling_type == "File":
         with st.sidebar.form("Upload file to analyze"):
             uploaded_file = st.file_uploader(
@@ -98,12 +100,79 @@ if loader_framework == "Docling":
             docling_type,
             url = st.session_state["url"]
         )
-    docling_save_artifacts(processed_doc)
-    vector_store = docling_store_on_qdrant(
-        role.qdrant_client,
-        processed_doc, 
-        COLLECTION_NAME, 
-        st.session_state["model_name"])
+    #docling_save_artifacts(processed_doc)
+    if st.session_state["rag_filter"] == True:
+        st.session_state["vector_store"] = store_on_qdrant(
+            role.qdrant_client,
+            processed_doc, 
+            st.session_state["model_name"],
+            loader_framework)
+elif loader_framework == "LangChain":
+    langchain_loader_type = st.sidebar.selectbox(
+        label = "Type",
+        options = document_loaders.__all__,
+        index = document_loaders.__all__.index("WikipediaLoader")
+    )
+    st.sidebar.caption("LangChain Document Loaders (Experimental)")
+    st.title("Under construction")
+    st.sidebar.subheader(langchain_loader_type)
+    loader = document_loaders.__getattr__(langchain_loader_type)
+    args_empty = {
+        name: param.default
+        for name, param in inspect.signature(loader).parameters.items()
+        if param.default is param.empty
+    }
+    args_not_empty = {
+        name: param.default
+        for name, param in inspect.signature(loader).parameters.items()
+        if param.default is not param.empty
+    }
+    with st.sidebar.form(langchain_loader_type):
+        for k, v in args_empty.items():
+            globals()[f"{langchain_loader_type}__{k}"] = st.text_input(
+                label = k,
+                value = "" if v is inspect._empty else v#str(v).replace("<class 'inspect._empty'>", "")
+            )
+        st.divider()
+        for k, v in args_not_empty.items():
+            globals()[f"{langchain_loader_type}__{k}"] = st.text_input(
+                label = k,
+                value = v
+            )
+        submit_args = st.form_submit_button(
+            "Submit",
+            use_container_width = True)
+    if submit_args:
+        loader_args = {
+            k: globals()[f"{langchain_loader_type}__{k}"] for k in args_empty.keys()
+            } | {
+            k: globals()[f"{langchain_loader_type}__{k}"] for k in args_not_empty.keys()}
+        try:
+            st.session_state["langchain_processed_doc"] = loader(**loader_args).load()
+            if st.session_state["rag_filter"] == True:
+                st.session_state["vector_store"] = store_on_qdrant(
+                    role.qdrant_client,
+                    st.session_state["langchain_processed_doc"], 
+                    st.session_state["model_name"],
+                    loader_framework)
+        except ImportError as e:
+            match = re.search(r'pip install\s+([^\s]+)', str(e))
+            if match:
+                package_name = match.group(1).replace(r"`", "").replace(r".", "")
+                with st.spinner(f"Downloading library: {package_name}"):
+                    test = subprocess.check_call([
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "install",
+                        package_name
+                    ],
+                    )
+                st.rerun()
+                st.info("Click in submit again to rerun the tool.")
+        except Exception as e:
+            st.error(e)
+            st.stop()
 
 
 for msg in st.session_state["history"].messages:
@@ -123,10 +192,13 @@ if prompt := st.chat_input():
         if st.session_state["memory_filter"] == False:
             st.session_state["shared_memory"].clear()
         if st.session_state["rag_filter"] == True:
-            rag_query = vector_store.similarity_search(query = prompt, k = 10)
+            rag_query = st.session_state["vector_store"].similarity_search(query = prompt, k = 10)
             rag_result = "\n\n".join(x.page_content for x in rag_query)
         else:
-            rag_result = processed_doc.document.export_to_markdown()
+            if loader_framework == "Docling":
+                rag_result = processed_doc.document.export_to_markdown()
+            elif loader_framework == "LangChain":
+                rag_result = "\n\n".join(x.page_content for x in st.session_state["langchain_processed_doc"])
         response = model.invoke(
             {
                 "context": rag_result,

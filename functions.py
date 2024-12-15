@@ -304,7 +304,7 @@ def docling_save_artifacts(_processed_doc):
 
 
 @st.cache_resource
-def docling_store_on_qdrant(_client, _processed_doc, COLLECTION_NAME, model_name):
+def store_on_qdrant(_client, _processed_doc, model_name, loader_framework):
     embeddings = OllamaEmbeddings(model = model_name)
     embedding_vector = embeddings.embed_query("This is a test query")
     if not _client.collection_exists("document_assistant"):
@@ -320,7 +320,12 @@ def docling_store_on_qdrant(_client, _processed_doc, COLLECTION_NAME, model_name
         collection_name = "document_assistant",
         embedding = embeddings,
     )
-    document = Document(page_content = _processed_doc.document.export_to_markdown())
+    if loader_framework == "Docling":
+        document = Document(
+            page_content = _processed_doc.document.export_to_markdown())
+    elif loader_framework == "LangChain":
+        document = Document(
+            page_content = "\n\n".join(x.page_content for x in _processed_doc))
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size = 1000,
         chunk_overlap = 200,
