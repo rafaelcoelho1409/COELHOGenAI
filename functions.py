@@ -16,6 +16,7 @@ from langchain_community.document_loaders import UnstructuredFileLoader
 from langchain_community.vectorstores import Chroma
 from langchain_community.tools import ShellTool
 from langchain_community.utilities import WikipediaAPIWrapper
+from langchain_community.document_loaders.dataframe import DataFrameLoader
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.prompts.prompt import PromptTemplate
 from langchain_core.prompts.structured import StructuredPrompt
@@ -462,8 +463,6 @@ class InformationRetrieval:
 class DataScience:
     def __init__(self, framework):
         self.framework = framework
-    def pandasai_query(self, query):
-        return self.smartdataframe.chat(query)
     def load_model(self, dataframe, models_filter, temperature_filter, memory):
         self.llm = OllamaLLM(
             model = models_filter,
@@ -492,25 +491,10 @@ class DataScience:
                 agent_executor_kwargs = {
                     "handle_parsing_errors": True,
                     },
-                max_iterations = 5
+                #max_iterations = 5
             )
         elif self.framework == "PandasAI":
-            tools = [
-                Tool(
-                    name = "PandasAI",
-                    func = self.pandasai_query,
-                    description = """
-                        Use this tool to query the SmartDataFrame. After receiving the dataframe
-                        coming from PandasAI SmartDataFrame, make the analysis requested by the user.
-                        Check the columns first to understand the context better."""
-                )
-            ]
-            return initialize_agent(
-                tools = tools,
-                llm = self.llm,
-                memory = memory,
-                agent = "conversational-react-description"
-            )
+            return self.smartdataframe
         
 class PromptEngineering:
     def __init__(self, PROMPT):
@@ -617,7 +601,7 @@ class SoftwareDevelopment:
                 ],
             verbose = True,
             agent_type = AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-            max_iterations = 5
+            #max_iterations = 5
         )
     
 class PlanAndSolve:

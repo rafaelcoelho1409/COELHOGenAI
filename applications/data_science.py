@@ -69,7 +69,14 @@ if prompt := st.chat_input():
                 "session_id": "any"
             }, 
             "callbacks": [st_callback]}
-        response = model.invoke(
-            {"input": prompt}, 
-            config)
-        st.write(response["output"])
+        if ds_framework == "LangChain":
+            response = model.invoke(
+                {"input": prompt}, 
+                config)
+            st.write(response["output"])
+        elif ds_framework == "PandasAI":
+            response = model.chat(prompt)
+            st.session_state["shared_memory"].chat_memory.add_user_message(prompt)
+            st.session_state["shared_memory"].chat_memory.add_ai_message(
+                response)
+            st.write(response)
