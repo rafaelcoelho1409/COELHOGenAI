@@ -13,6 +13,7 @@ from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.tools import ShellTool
 from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
+from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.prompts.prompt import PromptTemplate
 from langchain_core.prompts.structured import StructuredPrompt
@@ -677,7 +678,10 @@ class LangGraphBasicChatbot:
     def __init__(self, models_filter, temperature_filter, external_memory, memory):
         self.memory = memory
         self.external_memory = external_memory
-        self.config = {"configurable": {"thread_id": 1}}
+        self.st_callback = StreamlitCallbackHandler(st.container())
+        self.config = {
+            "configurable": {"thread_id": 1},
+            "callbacks": [self.st_callback]}
         self.llm = OllamaLLM(
             model = models_filter,
             temperature = temperature_filter
@@ -712,7 +716,10 @@ class LangGraphWikipediaChatbot:
     def __init__(self, models_filter, temperature_filter, external_memory, memory):
         self.memory = memory
         self.external_memory = external_memory
-        self.config = {"configurable": {"thread_id": 1}}
+        self.st_callback = StreamlitCallbackHandler(st.container())
+        self.config = {
+            "configurable": {"thread_id": 1},
+            "callbacks": [self.st_callback]}
         self.tool = WikipediaQueryRun(api_wrapper = WikipediaAPIWrapper())
         self.tools = [self.tool]
         self.llm = ChatOllama(
@@ -761,3 +768,4 @@ class LangGraphWikipediaChatbot:
             self.external_memory.chat_memory.add_ai_message(
                 event["messages"][-1].content
                 )
+            #TEST MEMORY WITHOUT EXTERNAL MEMORY TO SEE WHETHER LANGGRAPH IS WORKING OUT.

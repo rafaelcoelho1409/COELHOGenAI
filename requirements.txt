@@ -2,6 +2,7 @@ streamlit
 streamlit_extras
 ollama
 langgraph
+langgraph-cli[inmem]
 langchain
 langchain-ollama
 langchain-experimental
