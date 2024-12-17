@@ -1,6 +1,7 @@
 streamlit
 streamlit_extras
 ollama
+langgraph
 langchain
 langchain-ollama
 langchain-experimental

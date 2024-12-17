@@ -46,6 +46,10 @@ document_assistant = st.Page(
     "applications/document_assistant.py", 
     title = "Document Assistant", 
     icon = ":material/edit:")
+langgraph_applications = st.Page(
+    "applications/langgraph_applications.py", 
+    title = "LangGraph Applications", 
+    icon = ":material/edit:")
 
 pg = st.navigation({
     "COELHO GenAI by Rafael Coelho": [
@@ -58,11 +62,12 @@ pg = st.navigation({
         document_assistant,
         software_development,
         plan_and_solve,
+        langgraph_applications
     ]
 })
 
 
-st.sidebar.title(pg.title)
+st.title(("$$\\textbf{" + pg.title + "}$$").replace("&", "\&"))
 grid_buttons = st.sidebar.columns(2)
 settings_button = grid_buttons[0].button(
     label = "Settings",
@@ -73,9 +78,7 @@ if settings_button:
 clear_memory_button = grid_buttons[1].button(
     label = "Clear memory",
     use_container_width = True
-)
-st.sidebar.divider()
-    
+)    
 
 
 pg.run()

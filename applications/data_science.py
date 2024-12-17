@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
-from langchain.memory.buffer import ConversationBufferMemory
 from functions import (
     DataScience,
     check_model_and_temperature,
@@ -75,8 +74,7 @@ if prompt := st.chat_input():
                 config)
             st.write(response["output"])
         elif ds_framework == "PandasAI":
-            response = model.chat(prompt)
             st.session_state["shared_memory"].chat_memory.add_user_message(prompt)
-            st.session_state["shared_memory"].chat_memory.add_ai_message(
-                response)
+            response = model.chat(prompt)
+            st.session_state["shared_memory"].chat_memory.add_ai_message(response)
             st.write(response)

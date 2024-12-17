@@ -6,17 +6,13 @@ import os
 import io
 import json
 import subprocess
-import sys
 from uuid import uuid4
 from pandasai import SmartDataframe
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
-from langchain_community.agent_toolkits.load_tools import load_tools
 from langchain_community.embeddings import OllamaEmbeddings
-from langchain_community.document_loaders import UnstructuredFileLoader
-from langchain_community.vectorstores import Chroma
 from langchain_community.tools import ShellTool
+from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
-from langchain_community.document_loaders.dataframe import DataFrameLoader
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.prompts.prompt import PromptTemplate
 from langchain_core.prompts.structured import StructuredPrompt
@@ -27,18 +23,15 @@ from langchain_core.prompts.chat import (
 )
 from langchain_core.tools import Tool
 from langchain_core.documents import Document
+from langchain_core.messages import ToolMessage
 from langchain.memory.buffer import ConversationBufferMemory
 from langchain.chains.conversation.base import ConversationChain
 from langchain.chains import LLMChain
 from langchain import hub
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.tools.retriever import create_retriever_tool
-from langchain.chains.llm_math.base import LLMMathChain
 from langchain.agents import (
-    AgentExecutor, 
     AgentType, 
     initialize_agent,
-    create_tool_calling_agent
 )
 from langchain_ollama.chat_models import ChatOllama
 from langchain_ollama.llms import OllamaLLM
@@ -57,6 +50,12 @@ from docling.document_converter import DocumentConverter
 from docling_core.types.doc import ImageRefMode, PictureItem, TableItem
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
+from typing import Annotated, Literal
+from typing_extensions import TypedDict
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langgraph.checkpoint.memory import MemorySaver
+
 
 
 #>>>-------------------------------------------------<<<
@@ -205,6 +204,11 @@ def retrieved_documents(processed_doc, loader_framework):
     elif loader_framework == "LangChain":
         rag_result = "\n\n".join(x.page_content for x in processed_doc)
     st.write(rag_result)
+
+
+@st.dialog("Application graph")
+def view_application_graph(graph):
+    st.image(graph.get_graph().draw_mermaid_png())
 
 
 
@@ -410,6 +414,8 @@ def initialize_shared_memory():
             return_messages = True,
             chat_memory = st.session_state["history"]
         )
+    if "langgraph_memory" not in st.session_state:
+        st.session_state["langgraph_memory"] = MemorySaver()
 
 
 #>>>-------------------------------------------------<<<
@@ -631,3 +637,127 @@ class PlanAndSolve:
             memory = memory,
             verbose = True
         )
+    
+
+#>>>-------------------------------------------------<<<
+#LANGGRAPH APPLICATIONS - SUPPORT CLASSES
+#>>>-------------------------------------------------<<<
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+class BasicToolNode:
+    def __init__(self, tools: list) -> None:
+        self.tools_by_name = {tool.name: tool for tool in tools}
+    def __call__(self, inputs: dict):
+        if messages := inputs.get("messages", []):
+            message = messages[-1]
+        else:
+            raise ValueError("No message found in input")
+        outputs = []
+        for tool_call in message.tool_calls:
+            tool_result = self.tools_by_name[tool_call["name"]].invoke(
+                tool_call["args"]
+            )
+            outputs.append(
+                ToolMessage(
+                    content = json.dumps(tool_result),
+                    name = tool_call["name"],
+                    tool_call_id = tool_call["id"]
+                )
+            )
+        return {"messages": outputs}
+
+
+
+#>>>-------------------------------------------------<<<
+#LANGGRAPH APPLICATIONS
+#>>>-------------------------------------------------<<<
+class LangGraphBasicChatbot:
+    def __init__(self, models_filter, temperature_filter, external_memory, memory):
+        self.memory = memory
+        self.external_memory = external_memory
+        self.config = {"configurable": {"thread_id": 1}}
+        self.llm = OllamaLLM(
+            model = models_filter,
+            temperature = temperature_filter
+        )
+        self.graph_builder = StateGraph(State)
+        self.graph_builder.add_node("chatbot", self.chatbot)
+        self.graph_builder.add_edge(START, "chatbot")
+        self.graph_builder.add_edge("chatbot", END)
+        self.graph = self.graph_builder.compile(checkpointer = self.memory)
+    def chatbot(self, state: State):
+        return {"messages": self.llm.invoke(state["messages"])}
+    def stream_graph_updates(self, user_input: str):
+        if user_input.lower() in ["quit", "exit", "q"]:
+            st.chat_message("assistant").markdown("Goodbye!")
+            st.stop()
+        st.chat_message("human").markdown(user_input)
+        self.external_memory.chat_memory.add_user_message(user_input)
+        for event in self.graph.stream(
+            {"messages": [("user", user_input)]},
+            self.config,
+            stream_mode = "values"):
+            #for value in event.values():
+            st.chat_message("assistant").markdown(
+                event["messages"][-1].content
+                )
+            self.external_memory.chat_memory.add_ai_message(
+                event["messages"][-1].content
+                )
+
+
+class LangGraphWikipediaChatbot:
+    def __init__(self, models_filter, temperature_filter, external_memory, memory):
+        self.memory = memory
+        self.external_memory = external_memory
+        self.config = {"configurable": {"thread_id": 1}}
+        self.tool = WikipediaQueryRun(api_wrapper = WikipediaAPIWrapper())
+        self.tools = [self.tool]
+        self.llm = ChatOllama(
+            model = models_filter,
+            temperature = temperature_filter
+        )
+        self.llm_with_tools = self.llm.bind_tools(self.tools)
+        self.tool_node = BasicToolNode(tools = self.tools)
+        self.graph_builder = StateGraph(State)
+        self.graph_builder.add_node("chatbot", self.chatbot)
+        self.graph_builder.add_node("tools", self.tool_node)
+        self.graph_builder.add_conditional_edges(
+            "chatbot",
+            self.route_tools,
+            {"tools": "tools", END: END}
+        )
+        self.graph_builder.add_edge("tools", "chatbot")
+        self.graph_builder.add_edge(START, "chatbot")
+        self.graph = self.graph_builder.compile(checkpointer = self.memory)
+    def chatbot(self, state: State):
+        return {"messages": self.llm.invoke(state["messages"])}
+    def route_tools(self, state: State):
+        if isinstance(state, list):
+            ai_message = state[-1]
+        elif messages := state.get("messages", []):
+            ai_message = messages[-1]
+        else:
+            raise ValueError(f"No messages found in input state to tool_edge: {state}")
+        if hasattr(ai_message, "tool_calls") and len(ai_message.tool_calls) > 0:
+            return "tools"
+        return END
+    def stream_graph_updates(self, user_input: str):
+        if user_input.lower() in ["quit", "exit", "q"]:
+            st.chat_message("assistant").markdown("Goodbye!")
+            st.stop()
+        st.chat_message("human").markdown(user_input)
+        self.external_memory.chat_memory.add_user_message(user_input)
+        for event in self.graph.stream(
+            {"messages": [("user", user_input)]},
+            self.config,
+            stream_mode = "values"):
+            #for value in event.values():
+            st.chat_message("assistant").markdown(
+                event["messages"][-1].content
+                )
+            self.external_memory.chat_memory.add_ai_message(
+                event["messages"][-1].content
+                )
