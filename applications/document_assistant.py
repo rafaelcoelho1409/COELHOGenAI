@@ -3,6 +3,7 @@ import inspect
 import sys
 import subprocess
 import re
+from youtube_transcript_api import YouTubeTranscriptApi
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from langchain_community import document_loaders
 from functions import (
@@ -27,7 +28,8 @@ loader_framework = st.sidebar.selectbox(
     label = "Document Loader",
     options = [
         "Docling",
-        "LangChain"
+        "LangChain",
+        "Youtube"
     ]
 )
 
@@ -171,6 +173,29 @@ elif loader_framework == "LangChain":
         except Exception as e:
             st.error(e)
             st.stop()
+elif loader_framework == "Youtube":
+    with st.sidebar.form("Youtube"):
+        video_id = st.text_input(
+            label = "Youtube Video ID"
+        )
+        video_language = st.text_input(
+            label = "Video Language",
+            value = "en"
+        )
+        submit_video_id = st.form_submit_button(
+            "Submit",
+            use_container_width = True)
+    if submit_video_id:
+        processed_doc = YouTubeTranscriptApi.get_transcript(
+            video_id = video_id,
+            languages = [video_language]
+        )
+        if st.session_state["rag_filter"] == True:
+            st.session_state["vector_store"] = store_on_qdrant(
+                role.qdrant_client,
+                processed_doc, 
+                st.session_state["model_name"],
+                loader_framework)
 
 try:
     view_retrieved_documents = st.sidebar.button(
@@ -178,7 +203,7 @@ try:
         use_container_width = True,
     )
     if view_retrieved_documents:
-        if loader_framework == "Docling":
+        if loader_framework in ["Docling", "Youtube"]:
             retrieved_documents(processed_doc, loader_framework)
         elif loader_framework == "LangChain":
             retrieved_documents(st.session_state["langchain_processed_doc"], loader_framework)

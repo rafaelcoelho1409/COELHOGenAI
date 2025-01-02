@@ -204,6 +204,8 @@ def retrieved_documents(processed_doc, loader_framework):
         rag_result = processed_doc.document.export_to_markdown()
     elif loader_framework == "LangChain":
         rag_result = "\n\n".join(x.page_content for x in processed_doc)
+    elif loader_framework == "Youtube":
+        rag_result = processed_doc
     st.write(rag_result)
 
 
