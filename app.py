@@ -1,7 +1,5 @@
 import streamlit as st
 from streamlit_extras.grid import grid
-from langchain_community.chat_message_histories import StreamlitChatMessageHistory
-from langchain.memory.buffer import ConversationBufferMemory
 from functions import (
     settings,
     reload_active_models,
@@ -46,10 +44,7 @@ document_assistant = st.Page(
     "applications/document_assistant.py", 
     title = "Document Assistant", 
     icon = ":material/edit:")
-langgraph_applications = st.Page(
-    "applications/langgraph_applications.py", 
-    title = "LangGraph Applications", 
-    icon = ":material/edit:")
+
 
 pg = st.navigation({
     "COELHO GenAI by Rafael Coelho": [
@@ -62,12 +57,15 @@ pg = st.navigation({
         document_assistant,
         software_development,
         plan_and_solve,
-        langgraph_applications
     ]
 })
 
+with open("style.css") as css:
+    st.html(f"<style>{css.read()}</style>")
 
-st.title(("$$\\textbf{" + pg.title + "}$$").replace("&", "\&"))
+with st.container(key = "app_title"):
+    st.title(("$$\\textbf{" + pg.title + "}$$").replace("&", "\&"))
+
 grid_buttons = st.sidebar.columns(2)
 settings_button = grid_buttons[0].button(
     label = "Settings",

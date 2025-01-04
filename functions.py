@@ -11,8 +11,8 @@ from pandasai import SmartDataframe
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.tools import ShellTool
-from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
+#from langchain_community.tools.ddg_search.tool import DuckDuckGoSearchResults
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.prompts.prompt import PromptTemplate
@@ -24,7 +24,6 @@ from langchain_core.prompts.chat import (
 )
 from langchain_core.tools import Tool
 from langchain_core.documents import Document
-from langchain_core.messages import ToolMessage
 from langchain.memory.buffer import ConversationBufferMemory
 from langchain.chains.conversation.base import ConversationChain
 from langchain.chains import LLMChain
@@ -51,10 +50,6 @@ from docling.document_converter import DocumentConverter
 from docling_core.types.doc import ImageRefMode, PictureItem, TableItem
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
-from typing import Annotated, Literal
-from typing_extensions import TypedDict
-from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import MemorySaver
 
 
@@ -370,6 +365,7 @@ def store_on_qdrant(_client, _processed_doc, model_name, loader_framework):
     ids = [str(uuid4()) for _ in range(len(splits))]
     vector_store.add_documents(documents = splits, ids = ids)
     return vector_store
+
 #>>>-------------------------------------------------<<<
 #FUNCTIONS
 #>>>-------------------------------------------------<<<
@@ -642,132 +638,3 @@ class PlanAndSolve:
         )
     
 
-#>>>-------------------------------------------------<<<
-#LANGGRAPH APPLICATIONS - SUPPORT CLASSES
-#>>>-------------------------------------------------<<<
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
-
-
-class BasicToolNode:
-    def __init__(self, tools: list) -> None:
-        self.tools_by_name = {tool.name: tool for tool in tools}
-    def __call__(self, inputs: dict):
-        if messages := inputs.get("messages", []):
-            message = messages[-1]
-        else:
-            raise ValueError("No message found in input")
-        outputs = []
-        for tool_call in message.tool_calls:
-            tool_result = self.tools_by_name[tool_call["name"]].invoke(
-                tool_call["args"]
-            )
-            outputs.append(
-                ToolMessage(
-                    content = json.dumps(tool_result),
-                    name = tool_call["name"],
-                    tool_call_id = tool_call["id"]
-                )
-            )
-        return {"messages": outputs}
-
-
-
-#>>>-------------------------------------------------<<<
-#LANGGRAPH APPLICATIONS
-#>>>-------------------------------------------------<<<
-class LangGraphBasicChatbot:
-    def __init__(self, models_filter, temperature_filter, external_memory, memory):
-        self.memory = memory
-        self.external_memory = external_memory
-        self.st_callback = StreamlitCallbackHandler(st.container())
-        self.config = {
-            "configurable": {"thread_id": 1},
-            "callbacks": [self.st_callback]}
-        self.llm = OllamaLLM(
-            model = models_filter,
-            temperature = temperature_filter
-        )
-        self.graph_builder = StateGraph(State)
-        self.graph_builder.add_node("chatbot", self.chatbot)
-        self.graph_builder.add_edge(START, "chatbot")
-        self.graph_builder.add_edge("chatbot", END)
-        self.graph = self.graph_builder.compile(checkpointer = self.memory)
-    def chatbot(self, state: State):
-        return {"messages": self.llm.invoke(state["messages"])}
-    def stream_graph_updates(self, user_input: str):
-        if user_input.lower() in ["quit", "exit", "q"]:
-            st.chat_message("assistant").markdown("Goodbye!")
-            st.stop()
-        st.chat_message("human").markdown(user_input)
-        self.external_memory.chat_memory.add_user_message(user_input)
-        for event in self.graph.stream(
-            {"messages": [("user", user_input)]},
-            self.config,
-            stream_mode = "values"):
-            #for value in event.values():
-            st.chat_message("assistant").markdown(
-                event["messages"][-1].content
-                )
-            self.external_memory.chat_memory.add_ai_message(
-                event["messages"][-1].content
-                )
-
-
-class LangGraphWikipediaChatbot:
-    def __init__(self, models_filter, temperature_filter, external_memory, memory):
-        self.memory = memory
-        self.external_memory = external_memory
-        self.st_callback = StreamlitCallbackHandler(st.container())
-        self.config = {
-            "configurable": {"thread_id": 1},
-            "callbacks": [self.st_callback]}
-        self.tool = WikipediaQueryRun(api_wrapper = WikipediaAPIWrapper())
-        self.tools = [self.tool]
-        self.llm = ChatOllama(
-            model = models_filter,
-            temperature = temperature_filter
-        )
-        self.llm_with_tools = self.llm.bind_tools(self.tools)
-        self.tool_node = BasicToolNode(tools = self.tools)
-        self.graph_builder = StateGraph(State)
-        self.graph_builder.add_node("chatbot", self.chatbot)
-        self.graph_builder.add_node("tools", self.tool_node)
-        self.graph_builder.add_conditional_edges(
-            "chatbot",
-            self.route_tools,
-            {"tools": "tools", END: END}
-        )
-        self.graph_builder.add_edge("tools", "chatbot")
-        self.graph_builder.add_edge(START, "chatbot")
-        self.graph = self.graph_builder.compile(checkpointer = self.memory)
-    def chatbot(self, state: State):
-        return {"messages": self.llm.invoke(state["messages"])}
-    def route_tools(self, state: State):
-        if isinstance(state, list):
-            ai_message = state[-1]
-        elif messages := state.get("messages", []):
-            ai_message = messages[-1]
-        else:
-            raise ValueError(f"No messages found in input state to tool_edge: {state}")
-        if hasattr(ai_message, "tool_calls") and len(ai_message.tool_calls) > 0:
-            return "tools"
-        return END
-    def stream_graph_updates(self, user_input: str):
-        if user_input.lower() in ["quit", "exit", "q"]:
-            st.chat_message("assistant").markdown("Goodbye!")
-            st.stop()
-        st.chat_message("human").markdown(user_input)
-        self.external_memory.chat_memory.add_user_message(user_input)
-        for event in self.graph.stream(
-            {"messages": [("user", user_input)]},
-            self.config,
-            stream_mode = "values"):
-            #for value in event.values():
-            st.chat_message("assistant").markdown(
-                event["messages"][-1].content
-                )
-            self.external_memory.chat_memory.add_ai_message(
-                event["messages"][-1].content
-                )
-            #TEST MEMORY WITHOUT EXTERNAL MEMORY TO SEE WHETHER LANGGRAPH IS WORKING OUT.
