@@ -48,6 +48,7 @@ if tools_filter == None:
 
 role = InformationRetrieval()
 model = role.load_model(
+    st.session_state["framework"],
     [
         Tool(
             tools_dict[tools_filter].__class__.__name__,

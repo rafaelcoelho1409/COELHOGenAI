@@ -39,6 +39,7 @@ role = DocumentAssistant(
     st.session_state["vector_database_filter"]
     )
 model = role.load_model(
+    st.session_state["framework"],
     st.session_state["temperature_filter"], 
     st.session_state["model_name"],
     st.session_state["shared_memory"],

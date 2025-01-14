@@ -5,6 +5,7 @@ langgraph
 langgraph-cli[inmem]
 langchain
 langchain-ollama
+langchain-groq
 langchain-experimental
 langchain-community
 langchainhub
@@ -32,3 +33,4 @@ qdrant-client
 docling-core
 fastembed
 youtube-search
+youtube-transcript-api

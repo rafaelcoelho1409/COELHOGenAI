@@ -42,6 +42,7 @@ with st.sidebar.form("DataScience"):
             df = pd.read_excel(uploaded_file, engine = 'openpyxl')
         #---
         model = role.load_model(
+            st.session_state["framework"],
             df, 
             st.session_state["model_name"], 
             st.session_state["temperature_filter"],

@@ -10,3 +10,4 @@ docling/
 qdrant*/
 databases/
 travel2*
+.env

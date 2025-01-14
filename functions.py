@@ -35,6 +35,7 @@ from langchain.agents import (
 )
 from langchain_ollama.chat_models import ChatOllama
 from langchain_ollama.llms import OllamaLLM
+from langchain_groq import ChatGroq
 from langchain_experimental.agents.agent_toolkits.pandas.base import create_pandas_dataframe_agent
 from langchain_experimental.tools.python.tool import PythonREPLTool
 from langchain_experimental.plan_and_execute import (
@@ -59,91 +60,157 @@ from langgraph.checkpoint.memory import MemorySaver
 #>>>-------------------------------------------------<<<
 @st.dialog("Settings")
 def settings():
-    with st.form("Settings"):
-        models_options = sorted(
-            [x["model"] for x in ollama.list()["models"]])
-        if ollama.ps()["models"] != []:
-            active_models = [x["model"] for x in ollama.ps()["models"]]
-            models_filter = st.selectbox(
-                label = "Ollama Models",
-                options = models_options,
-                index = models_options.index(active_models[0])
-            )
-        else:
-            try:
-                #try to get the last model used, if exists
+    framework_option = st.selectbox(
+        label = "Framework",
+        options = [
+            "Groq",
+            "Ollama"
+        ]
+    )
+    st.session_state["framework"] = framework_option
+    if framework_option == "Ollama":
+        with st.form("Settings Ollama"):
+            models_options = sorted(
+                [x["model"] for x in ollama.list()["models"]])
+            if ollama.ps()["models"] != []:
+                active_models = [x["model"] for x in ollama.ps()["models"]]
                 models_filter = st.selectbox(
                     label = "Ollama Models",
                     options = models_options,
-                    index = models_options.index(st.session_state["model_name"])
+                    index = models_options.index(active_models[0])
+                )
+            else:
+                try:
+                    #try to get the last model used, if exists
+                    models_filter = st.selectbox(
+                        label = "Ollama Models",
+                        options = models_options,
+                        index = models_options.index(st.session_state["model_name"])
+                    )
+                except:
+                    models_filter = st.selectbox(
+                        label = "Ollama Models",
+                        options = sorted([x["model"] for x in ollama.list()["models"]])
+                    )
+            temperature_filter = st.slider(
+                label = "Temperature",
+                min_value = 0.00,
+                max_value = 1.00,
+                value = 0.00,
+                step = 0.01
+            )
+            toggle_filters = st.columns(3)
+            try:
+                memory_filter = toggle_filters[0].toggle(
+                    label = "Memory",
+                    value = st.session_state["memory_filter"]
                 )
             except:
-                models_filter = st.selectbox(
-                    label = "Ollama Models",
-                    options = sorted([x["model"] for x in ollama.list()["models"]])
+                memory_filter = toggle_filters[0].toggle(
+                    label = "Memory",
+                    value = True
                 )
-        temperature_filter = st.slider(
-            label = "Temperature",
-            min_value = 0.00,
-            max_value = 1.00,
-            value = 0.00,
-            step = 0.01
-        )
-        toggle_filters = st.columns(3)
-        try:
-            memory_filter = toggle_filters[0].toggle(
-                label = "Memory",
-                value = st.session_state["memory_filter"]
-            )
-        except:
-            memory_filter = toggle_filters[0].toggle(
-                label = "Memory",
-                value = True
-            )
-        try:
-            vector_database_filter = toggle_filters[1].toggle(
-                label = "Vector database",
-                value = st.session_state["vector_database_filter"]
-            )
-        except:
-            vector_database_filter = toggle_filters[1].toggle(
-                label = "Vector database",
-            )
-        try:
-            rag_filter = toggle_filters[2].toggle(
-                label = "RAG",
-                value = st.session_state["rag_filter"]
-            )
-        except:
-            rag_filter = toggle_filters[2].toggle(
-                label = "RAG",
-            )
-        submit_button = st.form_submit_button(
-                label = "Run model",
-                use_container_width = True
-            )
-        if submit_button:
-            if "model_name" in st.session_state:
-                if st.session_state["model_name"] != models_filter:
+            try:
+                vector_database_filter = toggle_filters[1].toggle(
+                    label = "Vector database",
+                    value = st.session_state["vector_database_filter"]
+                )
+            except:
+                vector_database_filter = toggle_filters[1].toggle(
+                    label = "Vector database",
+                )
+            try:
+                rag_filter = toggle_filters[2].toggle(
+                    label = "RAG",
+                    value = st.session_state["rag_filter"]
+                )
+            except:
+                rag_filter = toggle_filters[2].toggle(
+                    label = "RAG",
+                )
+            submit_button = st.form_submit_button(
+                    label = "Run model",
+                    use_container_width = True
+                )
+            if submit_button:
+                if "model_name" in st.session_state:
+                    if st.session_state["model_name"] != models_filter:
+                        subprocess.check_call([
+                            "ollama",
+                            "stop",
+                            st.session_state["model_name"]
+                        ]
+                        )
+                else:
                     subprocess.check_call([
                         "ollama",
                         "stop",
-                        st.session_state["model_name"]
+                        models_filter
                     ],
                     )
-            else:
-                subprocess.check_call([
-                    "ollama",
-                    "stop",
-                    models_filter
-                ],
+                st.session_state["model_name"] = models_filter
+                st.session_state["temperature_filter"] = temperature_filter
+                st.session_state["memory_filter"] = memory_filter
+                st.session_state["vector_database_filter"] = vector_database_filter
+                st.session_state["rag_filter"] = rag_filter
+                st.rerun()
+    elif framework_option == "Groq":
+        with st.form("Settings Groq"):
+            models_option = st.selectbox(
+                label = "Groq Models", 
+                options = [
+                    "llama-3.3-70b-versatile",
+                    "llama-3.1-8b-instant",
+                    "gemma2-9b-it",
+                    "llama-3.2-3b-preview"
+                ])
+            temperature_filter = st.slider(
+                label = "Temperature",
+                min_value = 0.00,
+                max_value = 1.00,
+                value = 0.00,
+                step = 0.01
+            )
+            toggle_filters = st.columns(3)
+            try:
+                memory_filter = toggle_filters[0].toggle(
+                    label = "Memory",
+                    value = st.session_state["memory_filter"]
                 )
-            st.session_state["model_name"] = models_filter
-            st.session_state["temperature_filter"] = temperature_filter
-            st.session_state["memory_filter"] = memory_filter
-            st.session_state["vector_database_filter"] = vector_database_filter
-            st.session_state["rag_filter"] = rag_filter
-            st.rerun()
+            except:
+                memory_filter = toggle_filters[0].toggle(
+                    label = "Memory",
+                    value = True
+                )
+            try:
+                vector_database_filter = toggle_filters[1].toggle(
+                    label = "Vector database",
+                    value = st.session_state["vector_database_filter"]
+                )
+            except:
+                vector_database_filter = toggle_filters[1].toggle(
+                    label = "Vector database",
+                )
+            try:
+                rag_filter = toggle_filters[2].toggle(
+                    label = "RAG",
+                    value = st.session_state["rag_filter"]
+                )
+            except:
+                rag_filter = toggle_filters[2].toggle(
+                    label = "RAG",
+                )
+            submit_button = st.form_submit_button(
+                    label = "Run model",
+                    use_container_width = True
+                )
+            if submit_button:
+                st.session_state["model_name"] = models_option
+                st.session_state["temperature_filter"] = temperature_filter
+                st.session_state["memory_filter"] = memory_filter
+                st.session_state["vector_database_filter"] = vector_database_filter
+                st.session_state["rag_filter"] = rag_filter
+                st.rerun()
 
 @st.dialog("Prompt settings")
 def prompt_settings():
@@ -391,12 +458,15 @@ def image_border_radius(image_path, border_radius, width, height, page_object = 
 
 def reload_active_models():
     active_models_container = st.sidebar.container()
-    active_models_text = "## Active models (Ollama)\n"
-    if ollama.ps()["models"] != []:
-        for model_name in ollama.ps()["models"]:
-            active_models_text += f"* {model_name['model']}\n"
-    else:
-        active_models_text += "No active models."
+    active_models_text = "**Active model:** "
+    if st.session_state["framework"] == "Ollama":
+        if ollama.ps()["models"] != []:
+            for model_name in ollama.ps()["models"]:
+                active_models_text += f"* {model_name['model']}\n"
+        else:
+            active_models_text += "No active models."
+    elif st.session_state["framework"] == "Groq":
+        active_models_text += st.session_state["model_name"]
     active_models_container.info(active_models_text)
 
 def check_model_and_temperature():
@@ -431,10 +501,19 @@ class Assistant:
             Human: {input}
             """
         self.prompt = ChatPromptTemplate.from_template(self.prompt_template)
-    def load_model(self, temperature_filter, model_name, memory):
-        llm = ChatOllama(
-                model = model_name, 
-                temperature = temperature_filter)
+    def load_model(self, framework, temperature_filter, model_name, memory):
+        llm_framework = {
+            "Groq": ChatGroq,
+            "Ollama": ChatOllama
+        }
+        llm_model = llm_framework[framework]
+        llm = llm_model(
+            model = model_name,
+            temperature = temperature_filter
+        )
+        #llm = ChatOllama(
+        #        model = model_name, 
+        #        temperature = temperature_filter)
         conversation = ConversationChain(
             llm = llm,
             prompt = self.prompt,
@@ -447,11 +526,20 @@ class Assistant:
 class InformationRetrieval:
     def __init__(self):
         pass
-    def load_model(self, tools, models_filter, temperature_filter, memory):
-        llm = OllamaLLM(
-            model = models_filter,
+    def load_model(self, framework, tools, model_name, temperature_filter, memory):
+        llm_framework = {
+            "Groq": ChatGroq,
+            "Ollama": ChatOllama #OllamaLLM
+        }
+        llm_model = llm_framework[framework]
+        llm = llm_model(
+            model = model_name,
             temperature = temperature_filter
         )
+        #llm = OllamaLLM(
+        #    model = models_filter,
+        #    temperature = temperature_filter
+        #)
         if tools != []:
             return initialize_agent(
                 tools = tools,
@@ -468,10 +556,19 @@ class InformationRetrieval:
 class DataScience:
     def __init__(self, framework):
         self.framework = framework
-    def load_model(self, dataframe, models_filter, temperature_filter, memory):
-        self.llm = OllamaLLM(
-            model = models_filter,
-            temperature = temperature_filter)
+    def load_model(self, framework, dataframe, model_name, temperature_filter, memory):
+        self.llm_framework = {
+            "Groq": ChatGroq,
+            "Ollama": ChatOllama #OllamaLLM
+        }
+        self.llm_model = self.llm_framework[framework]
+        self.llm = self.llm_model(
+            model = model_name,
+            temperature = temperature_filter
+        )
+        #self.llm = OllamaLLM(
+        #    model = model_name,
+        #    temperature = temperature_filter)
         self.smartdataframe = SmartDataframe(
                 dataframe,
                 config = {"llm": self.llm}
@@ -570,10 +667,19 @@ class DocumentAssistant:
             template = self.template
         )
 
-    def load_model(self, temperature_filter, model_name, memory, loader_framework):
-        llm = ChatOllama(
-                model = model_name, 
-                temperature = temperature_filter)
+    def load_model(self, framework, temperature_filter, model_name, memory, loader_framework):
+        llm_framework = {
+            "Groq": ChatGroq,
+            "Ollama": ChatOllama
+        }
+        llm_model = llm_framework[framework]
+        llm = llm_model(
+            model = model_name,
+            temperature = temperature_filter
+        )
+        #llm = ChatOllama(
+        #        model = model_name, 
+        #        temperature = temperature_filter)
         conversation = LLMChain(
             llm = llm,
             prompt = self.prompt,
@@ -587,10 +693,19 @@ class DocumentAssistant:
 class SoftwareDevelopment:
     def __init__(self):
         pass
-    def load_model(self, models_filter, temperature_filter, memory):
-        llm = OllamaLLM(
-            model = models_filter,
-            temperature = temperature_filter)
+    def load_model(self, framework, model_name, temperature_filter, memory):
+        llm_framework = {
+            "Groq": ChatGroq,
+            "Ollama": ChatOllama #OllamaLLM
+        }
+        llm_model = llm_framework[framework]
+        llm = llm_model(
+            model = model_name,
+            temperature = temperature_filter
+        )
+        #llm = OllamaLLM(
+        #    model = model_name,
+        #    temperature = temperature_filter)
         #conversation = ConversationChain(
         #    llm = llm,
         #    #prompt = self.prompt,
@@ -612,10 +727,19 @@ class SoftwareDevelopment:
 class PlanAndSolve:
     def __init__(self):
         pass
-    def load_model(self, models_filter, temperature_filter, memory):
-        llm = OllamaLLM(
-            model = models_filter,
-            temperature = temperature_filter)
+    def load_model(self, framework, model_name, temperature_filter, memory):
+        llm_framework = {
+            "Groq": ChatGroq,
+            "Ollama": ChatOllama #OllamaLLM
+        }
+        llm_model = llm_framework[framework]
+        llm = llm_model(
+            model = model_name,
+            temperature = temperature_filter
+        )
+        #llm = OllamaLLM(
+        #    model = model_name,
+        #    temperature = temperature_filter)
         planner = load_chat_planner(llm)
         search = WikipediaAPIWrapper()
         tools = [
