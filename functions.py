@@ -34,8 +34,11 @@ from langchain.agents import (
     initialize_agent,
 )
 from langchain_ollama.chat_models import ChatOllama
-from langchain_ollama.llms import OllamaLLM
+from langchain_openai import ChatOpenAI
 from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.chat_models.sambanova import ChatSambaNovaCloud
 from langchain_experimental.agents.agent_toolkits.pandas.base import create_pandas_dataframe_agent
 from langchain_experimental.tools.python.tool import PythonREPLTool
 from langchain_experimental.plan_and_execute import (
@@ -58,16 +61,85 @@ from langgraph.checkpoint.memory import MemorySaver
 #>>>-------------------------------------------------<<<
 #STREAMLIT
 #>>>-------------------------------------------------<<<
-@st.dialog("Settings")
+@st.dialog("Settings", width = "large")
 def settings():
+    api_keys_dict = {
+        "Groq": "GROQ_API_KEY",
+        "SambaNova": "SAMBANOVA_API_KEY",
+        "Scaleway": (
+            "SCW_GENERATIVE_APIs_ENDPOINT",
+            "SCW_ACCESS_KEY",
+            "SCW_SECRET_KEY"
+        ),
+        "OpenAI": "OPENAI_API_KEY"
+    }
     framework_option = st.selectbox(
         label = "Framework",
         options = [
             "Groq",
-            "Ollama"
+            #"Google Generative AI",
+            "Ollama",
+            "SambaNova",
+            "Scaleway",
+            "OpenAI"
         ]
     )
     st.session_state["framework"] = framework_option
+    provider_model_dict = {
+        "Groq": [
+            "gemma2-9b-it",
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "llama-guard-3-8b",
+            "llama3-70b-8192",
+            "llama3-8b-8192",
+            "mixtral-8x7b-32768",
+            "qwen-2.5-32b",
+            "deepseek-r1-distill-qwen-32b",
+            "deepseek-r1-distill-llama-70b-specdec",
+            "deepseek-r1-distill-llama-70b",
+            "llama-3.3-70b-specdec",
+            "llama-3.2-1b-preview",
+            "llama-3.2-3b-preview",
+                ], 
+        "Google Generative AI": [
+            "gemini-1.5-pro",
+            #"gemini-2.0-flash"
+        ],
+        "SambaNova": [
+            "DeepSeek-R1",
+            "DeepSeek-R1-Distill-Llama-70B",
+            "Llama-3.1-Tulu-3-405B",
+            "Meta-Llama-3.1-405B-Instruct",
+            "Meta-Llama-3.1-70B-Instruct",
+            "Meta-Llama-3.1-8B-Instruct",
+            "Meta-Llama-3.3-70B-Instruct",
+            "Meta-Llama-Guard-3-8B",
+            "Qwen2.5-72B-Instruct",
+            "Qwen2.5-Coder-32B-Instruct",
+            "QwQ-32B-Preview"
+        ],
+        "Scaleway": [
+            "deepseek-r1",
+            "deepseek-r1-distill-llama-70b",
+            "llama-3.3-70b-instruct",
+            "llama-3.1-70b-instruct",
+            "llama-3.1-8b-instruct",
+            "mistral-nemo-instruct-2407",
+            "pixtral-12b-2409",
+            "qwen2.5-coder-32b-instruct",
+            "bge-multilingual-gemma2"
+        ],
+        "OpenAI": [
+            "gpt-4o",
+            "chatgpt-4o-latest",
+            "gpt-4o-mini",
+            "o1",
+            "o1-mini",
+            "o3-mini",
+            "o1-preview"
+        ]
+    }
     if framework_option == "Ollama":
         with st.form("Settings Ollama"):
             models_options = sorted(
@@ -135,14 +207,14 @@ def settings():
             if submit_button:
                 if "model_name" in st.session_state:
                     if st.session_state["model_name"] != models_filter:
-                        subprocess.check_call([
+                        subprocess.run([
                             "ollama",
                             "stop",
                             st.session_state["model_name"]
-                        ]
+                        ],
                         )
                 else:
-                    subprocess.check_call([
+                    subprocess.run([
                         "ollama",
                         "stop",
                         models_filter
@@ -154,16 +226,17 @@ def settings():
                 st.session_state["vector_database_filter"] = vector_database_filter
                 st.session_state["rag_filter"] = rag_filter
                 st.rerun()
-    elif framework_option == "Groq":
-        with st.form("Settings Groq"):
+    elif framework_option in [
+        "Groq",
+        #"Google Generative AI",
+        "SambaNova",
+        "Scaleway",
+        "OpenAI"
+    ]:
+        with st.form(f"Settings {framework_option}"):
             models_option = st.selectbox(
-                label = "Groq Models", 
-                options = [
-                    "llama-3.3-70b-versatile",
-                    "llama-3.1-8b-instant",
-                    "gemma2-9b-it",
-                    "llama-3.2-3b-preview"
-                ])
+                label = f"{framework_option} Models", 
+                options = provider_model_dict[framework_option])
             temperature_filter = st.slider(
                 label = "Temperature",
                 min_value = 0.00,
@@ -171,6 +244,70 @@ def settings():
                 value = 0.00,
                 step = 0.01
             )
+            if st.session_state["framework"] in [
+                "Groq",
+                #"Google Generative AI",
+                "SambaNova",
+                "OpenAI"
+            ]:
+                try: #AUTOFILL API KEYS, IF EXISTS
+                    globals()[api_keys_dict[st.session_state["framework"]]] = st.text_input(
+                        label = api_keys_dict[st.session_state["framework"]],
+                        value = os.getenv(api_keys_dict[st.session_state["framework"]]),
+                        placeholder = "Provide the API key",
+                        type = "password"
+                    )
+                    os.environ[api_keys_dict[st.session_state["framework"]]] = globals()[api_keys_dict[st.session_state["framework"]]]
+                except:
+                    globals()[api_keys_dict[st.session_state["framework"]]] = st.text_input(
+                        label = api_keys_dict[st.session_state["framework"]],
+                        #value = os.getenv(api_keys_dict[st.session_state["framework"]])
+                        placeholder = "Provide the API key",
+                        type = "password"
+                    )
+                    os.environ[api_keys_dict[st.session_state["framework"]]] = globals()[api_keys_dict[st.session_state["framework"]]]
+            elif st.session_state["framework"] == "Scaleway":
+                try:
+                    SCW_GENERATIVE_APIs_ENDPOINT = st.text_input(
+                        label = "SCW_GENERATIVE_APIs_ENDPOINT",
+                        value = os.getenv("SCW_GENERATIVE_APIs_ENDPOINT"),
+                        placeholder = "Provide the API endpoint",
+                        type = "password"
+                    )
+                    SCW_ACCESS_KEY = st.text_input(
+                        label = "SCW_ACCESS_KEY",
+                        value = os.getenv("SCW_ACCESS_KEY"),
+                        placeholder = "Provide the access key",
+                        type = "password"
+                    )
+                    SCW_SECRET_KEY = st.text_input(
+                        label = "SCW_SECRET_KEY",
+                        value = os.getenv("SCW_SECRET_KEY"),
+                        placeholder = "Provide the secret key",
+                        type = "password"
+                    )
+                    os.environ["SCW_GENERATIVE_APIs_ENDPOINT"] = SCW_GENERATIVE_APIs_ENDPOINT
+                    os.environ["SCW_ACCESS_KEY"] = SCW_ACCESS_KEY
+                    os.environ["SCW_SECRET_KEY"] = SCW_SECRET_KEY
+                except:
+                    SCW_GENERATIVE_APIs_ENDPOINT = st.text_input(
+                        label = "SCW_GENERATIVE_APIs_ENDPOINT",
+                        placeholder = "Provide the API endpoint",
+                        type = "password"
+                    )
+                    SCW_ACCESS_KEY = st.text_input(
+                        label = "SCW_ACCESS_KEY",
+                        placeholder = "Provide the access key",
+                        type = "password"
+                    )
+                    SCW_SECRET_KEY = st.text_input(
+                        label = "SCW_SECRET_KEY",
+                        placeholder = "Provide the secret key",
+                        type = "password"
+                    )
+                    os.environ["SCW_GENERATIVE_APIs_ENDPOINT"] = SCW_GENERATIVE_APIs_ENDPOINT
+                    os.environ["SCW_ACCESS_KEY"] = SCW_ACCESS_KEY
+                    os.environ["SCW_SECRET_KEY"] = SCW_SECRET_KEY
             toggle_filters = st.columns(3)
             try:
                 memory_filter = toggle_filters[0].toggle(
@@ -212,7 +349,7 @@ def settings():
                 st.session_state["rag_filter"] = rag_filter
                 st.rerun()
 
-@st.dialog("Prompt settings")
+@st.dialog("Prompt settings", width = "large")
 def prompt_settings():
     with st.form("LangChain Hub"):
         PROMPT_NAME = st.text_input(
@@ -239,7 +376,7 @@ def prompt_settings():
                 st.stop()
             st.rerun()
 
-@st.dialog("Prompt informations")
+@st.dialog("Prompt informations", width = "large")
 def prompt_informations(PROMPT_NAME, PROMPT):
     st.markdown(f"**Prompt name:** {PROMPT_NAME}")
     st.divider()
@@ -258,7 +395,7 @@ def prompt_informations(PROMPT_NAME, PROMPT):
         st.write(PROMPT.template)
     st.markdown(prompt_description)
 
-@st.dialog("Retrieved documents")
+@st.dialog("Retrieved documents", width = "large")
 def retrieved_documents(processed_doc, loader_framework):
     st.markdown(f"**Retrieved documents**")
     st.divider()
@@ -271,7 +408,7 @@ def retrieved_documents(processed_doc, loader_framework):
     st.write(rag_result)
 
 
-@st.dialog("Application graph")
+@st.dialog("Application graph", width = "large")
 def view_application_graph(graph):
     st.image(graph.get_graph().draw_mermaid_png())
 
@@ -502,20 +639,35 @@ class Assistant:
             """
         self.prompt = ChatPromptTemplate.from_template(self.prompt_template)
     def load_model(self, framework, temperature_filter, model_name, memory):
-        llm_framework = {
+        self.llm_framework = {
             "Groq": ChatGroq,
-            "Ollama": ChatOllama
+            "Ollama": ChatOllama,
+            "Google Generative AI": ChatGoogleGenerativeAI,
+            "SambaNova": ChatSambaNovaCloud,
+            "Scaleway": ChatOpenAI,
+            "OpenAI": ChatOpenAI,
         }
-        llm_model = llm_framework[framework]
-        llm = llm_model(
-            model = model_name,
-            temperature = temperature_filter
-        )
-        #llm = ChatOllama(
-        #        model = model_name, 
-        #        temperature = temperature_filter)
+        self.llm_model = self.llm_framework[framework]
+        if framework == "Scaleway":
+            self.llm = ChatOpenAI(
+                base_url = os.getenv("SCW_GENERATIVE_APIs_ENDPOINT"),
+                api_key = os.getenv("SCW_SECRET_KEY"),
+                model = model_name,
+                temperature =  temperature_filter
+            )
+        else:
+            try:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    temperature = temperature_filter,
+                )
+            except:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    #temperature = temperature_filter,
+                )
         conversation = ConversationChain(
-            llm = llm,
+            llm = self.llm,
             prompt = self.prompt,
             verbose = True,
             memory = memory
@@ -527,23 +679,37 @@ class InformationRetrieval:
     def __init__(self):
         pass
     def load_model(self, framework, tools, model_name, temperature_filter, memory):
-        llm_framework = {
+        self.llm_framework = {
             "Groq": ChatGroq,
-            "Ollama": ChatOllama #OllamaLLM
+            "Ollama": ChatOllama,
+            "Google Generative AI": ChatGoogleGenerativeAI,
+            "SambaNova": ChatSambaNovaCloud,
+            "Scaleway": ChatOpenAI,
+            "OpenAI": ChatOpenAI,
         }
-        llm_model = llm_framework[framework]
-        llm = llm_model(
-            model = model_name,
-            temperature = temperature_filter
-        )
-        #llm = OllamaLLM(
-        #    model = models_filter,
-        #    temperature = temperature_filter
-        #)
+        self.llm_model = self.llm_framework[framework]
+        if framework == "Scaleway":
+            self.llm = ChatOpenAI(
+                base_url = os.getenv("SCW_GENERATIVE_APIs_ENDPOINT"),
+                api_key = os.getenv("SCW_SECRET_KEY"),
+                model = model_name,
+                temperature =  temperature_filter
+            )
+        else:
+            try:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    temperature = temperature_filter,
+                )
+            except:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    #temperature = temperature_filter,
+                )
         if tools != []:
             return initialize_agent(
                 tools = tools,
-                llm = llm,
+                llm = self.llm,
                 memory = memory,
                 agent = AgentType.ZERO_SHOT_REACT_DESCRIPTION,
                 verbose = True,
@@ -559,16 +725,31 @@ class DataScience:
     def load_model(self, framework, dataframe, model_name, temperature_filter, memory):
         self.llm_framework = {
             "Groq": ChatGroq,
-            "Ollama": ChatOllama #OllamaLLM
+            "Ollama": ChatOllama,
+            "Google Generative AI": ChatGoogleGenerativeAI,
+            "SambaNova": ChatSambaNovaCloud,
+            "Scaleway": ChatOpenAI,
+            "OpenAI": ChatOpenAI,
         }
         self.llm_model = self.llm_framework[framework]
-        self.llm = self.llm_model(
-            model = model_name,
-            temperature = temperature_filter
-        )
-        #self.llm = OllamaLLM(
-        #    model = model_name,
-        #    temperature = temperature_filter)
+        if framework == "Scaleway":
+            self.llm = ChatOpenAI(
+                base_url = os.getenv("SCW_GENERATIVE_APIs_ENDPOINT"),
+                api_key = os.getenv("SCW_SECRET_KEY"),
+                model = model_name,
+                temperature =  temperature_filter
+            )
+        else:
+            try:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    temperature = temperature_filter,
+                )
+            except:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    #temperature = temperature_filter,
+                )
         self.smartdataframe = SmartDataframe(
                 dataframe,
                 config = {"llm": self.llm}
@@ -668,20 +849,35 @@ class DocumentAssistant:
         )
 
     def load_model(self, framework, temperature_filter, model_name, memory, loader_framework):
-        llm_framework = {
+        self.llm_framework = {
             "Groq": ChatGroq,
-            "Ollama": ChatOllama
+            "Ollama": ChatOllama,
+            "Google Generative AI": ChatGoogleGenerativeAI,
+            "SambaNova": ChatSambaNovaCloud,
+            "Scaleway": ChatOpenAI,
+            "OpenAI": ChatOpenAI,
         }
-        llm_model = llm_framework[framework]
-        llm = llm_model(
-            model = model_name,
-            temperature = temperature_filter
-        )
-        #llm = ChatOllama(
-        #        model = model_name, 
-        #        temperature = temperature_filter)
+        self.llm_model = self.llm_framework[framework]
+        if framework == "Scaleway":
+            self.llm = ChatOpenAI(
+                base_url = os.getenv("SCW_GENERATIVE_APIs_ENDPOINT"),
+                api_key = os.getenv("SCW_SECRET_KEY"),
+                model = model_name,
+                temperature =  temperature_filter
+            )
+        else:
+            try:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    temperature = temperature_filter,
+                )
+            except:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    #temperature = temperature_filter,
+                )
         conversation = LLMChain(
-            llm = llm,
+            llm = self.llm,
             prompt = self.prompt,
             verbose = True,
             memory = memory,
@@ -694,26 +890,35 @@ class SoftwareDevelopment:
     def __init__(self):
         pass
     def load_model(self, framework, model_name, temperature_filter, memory):
-        llm_framework = {
+        self.llm_framework = {
             "Groq": ChatGroq,
-            "Ollama": ChatOllama #OllamaLLM
+            "Ollama": ChatOllama,
+            "Google Generative AI": ChatGoogleGenerativeAI,
+            "SambaNova": ChatSambaNovaCloud,
+            "Scaleway": ChatOpenAI,
+            "OpenAI": ChatOpenAI,
         }
-        llm_model = llm_framework[framework]
-        llm = llm_model(
-            model = model_name,
-            temperature = temperature_filter
-        )
-        #llm = OllamaLLM(
-        #    model = model_name,
-        #    temperature = temperature_filter)
-        #conversation = ConversationChain(
-        #    llm = llm,
-        #    #prompt = self.prompt,
-        #    verbose = True,
-        #    memory = self.memory
-        #)
+        self.llm_model = self.llm_framework[framework]
+        if framework == "Scaleway":
+            self.llm = ChatOpenAI(
+                base_url = os.getenv("SCW_GENERATIVE_APIs_ENDPOINT"),
+                api_key = os.getenv("SCW_SECRET_KEY"),
+                model = model_name,
+                temperature =  temperature_filter
+            )
+        else:
+            try:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    temperature = temperature_filter,
+                )
+            except:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    #temperature = temperature_filter,
+                )
         return initialize_agent(
-            llm = llm,
+            llm = self.llm,
             memory = memory,
             tools = [
                 ShellTool(),
@@ -728,19 +933,34 @@ class PlanAndSolve:
     def __init__(self):
         pass
     def load_model(self, framework, model_name, temperature_filter, memory):
-        llm_framework = {
+        self.llm_framework = {
             "Groq": ChatGroq,
-            "Ollama": ChatOllama #OllamaLLM
+            "Ollama": ChatOllama,
+            "Google Generative AI": ChatGoogleGenerativeAI,
+            "SambaNova": ChatSambaNovaCloud,
+            "Scaleway": ChatOpenAI,
+            "OpenAI": ChatOpenAI,
         }
-        llm_model = llm_framework[framework]
-        llm = llm_model(
-            model = model_name,
-            temperature = temperature_filter
-        )
-        #llm = OllamaLLM(
-        #    model = model_name,
-        #    temperature = temperature_filter)
-        planner = load_chat_planner(llm)
+        self.llm_model = self.llm_framework[framework]
+        if framework == "Scaleway":
+            self.llm = ChatOpenAI(
+                base_url = os.getenv("SCW_GENERATIVE_APIs_ENDPOINT"),
+                api_key = os.getenv("SCW_SECRET_KEY"),
+                model = model_name,
+                temperature =  temperature_filter
+            )
+        else:
+            try:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    temperature = temperature_filter,
+                )
+            except:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    #temperature = temperature_filter,
+                )
+        planner = load_chat_planner(self.llm)
         search = WikipediaAPIWrapper()
         tools = [
             Tool(
@@ -750,7 +970,7 @@ class PlanAndSolve:
             ),
         ]
         executor = load_agent_executor(
-            llm,
+            self.llm,
             tools,
             verbose = True
         )

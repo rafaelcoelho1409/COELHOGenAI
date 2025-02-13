@@ -2,7 +2,6 @@ import streamlit as st
 from streamlit_extras.grid import grid
 from functions import (
     settings,
-    reload_active_models,
     check_model_and_temperature,
     initialize_shared_memory
 )
@@ -84,14 +83,15 @@ pg.run()
 
 model_temperature_checker = check_model_and_temperature()
 if model_temperature_checker == False:
-    st.info("Choose model and temperature to start running COELHO GenAI models.")
+    if pg.title != "Home":
+        st.info("Choose model and temperature to start running COELHO GenAI models.")
     st.stop()
 
 
 with st.sidebar.expander("**Informations**", expanded = True):
+    st.markdown(f"**Framework:** {st.session_state['framework']}")
     st.markdown(f"**Model:** {st.session_state["model_name"]}")
     st.markdown(f"**Temperature:** {st.session_state["temperature_filter"]}")
-    reload_active_models()
 
 
 initialize_shared_memory()

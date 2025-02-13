@@ -70,12 +70,18 @@ if prompt := st.chat_input():
             }, 
             "callbacks": [st_callback]}
         if ds_framework == "LangChain":
+            st.session_state["shared_memory"].chat_memory.add_user_message(prompt)
             response = model.invoke(
                 {"input": prompt}, 
                 config)
+            st.session_state["shared_memory"].chat_memory.add_ai_message(response["output"])
             st.write(response["output"])
         elif ds_framework == "PandasAI":
             st.session_state["shared_memory"].chat_memory.add_user_message(prompt)
             response = model.chat(prompt)
-            st.session_state["shared_memory"].chat_memory.add_ai_message(response)
+            print(type(response))
+            if type(response) == pd.core.frame.DataFrame:
+                st.session_state["shared_memory"].chat_memory.add_ai_message(response.head().to_markdown())
+            else:
+                st.session_state["shared_memory"].chat_memory.add_ai_message(response)
             st.write(response)

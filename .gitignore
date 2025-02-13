@@ -11,3 +11,8 @@ qdrant*/
 databases/
 travel2*
 .env
+drafts/
+
+# Added by cargo
+
+/target
