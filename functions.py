@@ -34,9 +34,9 @@ from langchain.agents import (
     initialize_agent,
 )
 from langchain_ollama.chat_models import ChatOllama
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_groq import ChatGroq
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.chat_models.sambanova import ChatSambaNovaCloud
 from langchain_experimental.agents.agent_toolkits.pandas.base import create_pandas_dataframe_agent
@@ -539,8 +539,15 @@ def docling_save_artifacts(_processed_doc):
 
 
 @st.cache_resource
-def store_on_qdrant(_client, _processed_doc, model_name, loader_framework):
-    embeddings = OllamaEmbeddings(model = model_name)
+def store_on_qdrant(_client, _processed_doc, model_name, loader_framework, llm_framework):
+    if llm_framework == "Ollama":
+        embeddings = OllamaEmbeddings(model = model_name)
+    elif llm_framework == "Google Generative AI":
+        embeddings = GoogleGenerativeAIEmbeddings(model = model_name)
+    elif llm_framework in ["Groq", "SambaNova"]:
+        embeddings = HuggingFaceEmbeddings(model = "all-MiniLM-L6-v2")
+    elif llm_framework in ["Scaleway", "OpenAI"]:
+        embeddings = OpenAIEmbeddings(model = model_name)
     embedding_vector = embeddings.embed_query("This is a test query")
     if not _client.collection_exists("document_assistant"):
         _client.create_collection(
@@ -813,6 +820,14 @@ class PromptEngineering:
 
 class DocumentAssistant:
     def __init__(self, model_name, vector_database_filter):
+        self.embeddings_dict = {
+            "Groq": HuggingFaceEmbeddings,
+            "Ollama": OllamaEmbeddings,
+            "Google Generative AI": ChatGoogleGenerativeAI,
+            "SambaNova": HuggingFaceEmbeddings,
+            "Scaleway": ChatOpenAI,
+            "OpenAI": ChatOpenAI,
+        }
         #remove .lock file
         self.vector_database_path = {
             True: os.path.join(

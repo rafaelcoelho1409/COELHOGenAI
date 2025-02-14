@@ -106,7 +106,8 @@ if loader_framework == "Docling":
             role.qdrant_client,
             processed_doc, 
             st.session_state["model_name"],
-            loader_framework)
+            loader_framework,
+            st.session_state["framework"])
 elif loader_framework == "LangChain":
     langchain_loader_type = st.sidebar.selectbox(
         label = "Type",
@@ -153,7 +154,8 @@ elif loader_framework == "LangChain":
                     role.qdrant_client,
                     st.session_state["langchain_processed_doc"], 
                     st.session_state["model_name"],
-                    loader_framework)
+                    loader_framework,
+                    st.session_state["framework"])
         except ImportError as e:
             match = re.search(r'pip install\s+([^\s]+)', str(e))
             if match:
