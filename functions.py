@@ -250,7 +250,8 @@ def settings():
                 "SambaNova",
                 "OpenAI"
             ]:
-                try: #AUTOFILL API KEYS, IF EXISTS
+                #AUTOFILL API KEYS, IF EXISTS
+                if api_keys_dict[st.session_state["framework"]] in os.environ:
                     globals()[api_keys_dict[st.session_state["framework"]]] = st.text_input(
                         label = api_keys_dict[st.session_state["framework"]],
                         value = os.getenv(api_keys_dict[st.session_state["framework"]]),
@@ -258,7 +259,7 @@ def settings():
                         type = "password"
                     )
                     os.environ[api_keys_dict[st.session_state["framework"]]] = globals()[api_keys_dict[st.session_state["framework"]]]
-                except:
+                else:
                     globals()[api_keys_dict[st.session_state["framework"]]] = st.text_input(
                         label = api_keys_dict[st.session_state["framework"]],
                         #value = os.getenv(api_keys_dict[st.session_state["framework"]])
@@ -267,47 +268,48 @@ def settings():
                     )
                     os.environ[api_keys_dict[st.session_state["framework"]]] = globals()[api_keys_dict[st.session_state["framework"]]]
             elif st.session_state["framework"] == "Scaleway":
-                try:
+                if "SCW_GENERATIVE_APIs_ENDPOINT" in os.environ:
                     SCW_GENERATIVE_APIs_ENDPOINT = st.text_input(
                         label = "SCW_GENERATIVE_APIs_ENDPOINT",
                         value = os.getenv("SCW_GENERATIVE_APIs_ENDPOINT"),
                         placeholder = "Provide the API endpoint",
                         type = "password"
                     )
+                else:
+                    SCW_GENERATIVE_APIs_ENDPOINT = st.text_input(
+                        label = "SCW_GENERATIVE_APIs_ENDPOINT",
+                        placeholder = "Provide the API endpoint",
+                        type = "password"
+                    )
+                if "SCW_ACCESS_KEY" in os.environ:
                     SCW_ACCESS_KEY = st.text_input(
                         label = "SCW_ACCESS_KEY",
                         value = os.getenv("SCW_ACCESS_KEY"),
                         placeholder = "Provide the access key",
                         type = "password"
                     )
+                else:
+                    SCW_ACCESS_KEY = st.text_input(
+                        label = "SCW_ACCESS_KEY",
+                        placeholder = "Provide the access key",
+                        type = "password"
+                    )
+                if "SCW_SECRET_KEY" in os.environ:
                     SCW_SECRET_KEY = st.text_input(
                         label = "SCW_SECRET_KEY",
                         value = os.getenv("SCW_SECRET_KEY"),
                         placeholder = "Provide the secret key",
                         type = "password"
                     )
-                    os.environ["SCW_GENERATIVE_APIs_ENDPOINT"] = SCW_GENERATIVE_APIs_ENDPOINT
-                    os.environ["SCW_ACCESS_KEY"] = SCW_ACCESS_KEY
-                    os.environ["SCW_SECRET_KEY"] = SCW_SECRET_KEY
-                except:
-                    SCW_GENERATIVE_APIs_ENDPOINT = st.text_input(
-                        label = "SCW_GENERATIVE_APIs_ENDPOINT",
-                        placeholder = "Provide the API endpoint",
-                        type = "password"
-                    )
-                    SCW_ACCESS_KEY = st.text_input(
-                        label = "SCW_ACCESS_KEY",
-                        placeholder = "Provide the access key",
-                        type = "password"
-                    )
+                else:
                     SCW_SECRET_KEY = st.text_input(
                         label = "SCW_SECRET_KEY",
                         placeholder = "Provide the secret key",
                         type = "password"
                     )
-                    os.environ["SCW_GENERATIVE_APIs_ENDPOINT"] = SCW_GENERATIVE_APIs_ENDPOINT
-                    os.environ["SCW_ACCESS_KEY"] = SCW_ACCESS_KEY
-                    os.environ["SCW_SECRET_KEY"] = SCW_SECRET_KEY
+                os.environ["SCW_GENERATIVE_APIs_ENDPOINT"] = SCW_GENERATIVE_APIs_ENDPOINT
+                os.environ["SCW_ACCESS_KEY"] = SCW_ACCESS_KEY
+                os.environ["SCW_SECRET_KEY"] = SCW_SECRET_KEY
             toggle_filters = st.columns(3)
             try:
                 memory_filter = toggle_filters[0].toggle(
