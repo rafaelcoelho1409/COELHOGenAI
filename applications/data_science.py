@@ -79,9 +79,8 @@ if prompt := st.chat_input():
         elif ds_framework == "PandasAI":
             st.session_state["shared_memory"].chat_memory.add_user_message(prompt)
             response = model.chat(prompt)
-            print(type(response))
             if type(response) == pd.core.frame.DataFrame:
-                st.session_state["shared_memory"].chat_memory.add_ai_message(response.head().to_markdown())
+                st.session_state["shared_memory"].chat_memory.add_ai_message(response.to_markdown())
             else:
                 st.session_state["shared_memory"].chat_memory.add_ai_message(response)
             st.write(response)
