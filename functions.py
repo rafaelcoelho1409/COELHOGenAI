@@ -7,7 +7,7 @@ import io
 import json
 import subprocess
 from uuid import uuid4
-from pandasai import SmartDataframe
+#from pandasai import SmartDataframe
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.tools import ShellTool
@@ -759,10 +759,10 @@ class DataScience:
                     model = model_name,
                     #temperature = temperature_filter,
                 )
-        self.smartdataframe = SmartDataframe(
-                dataframe,
-                config = {"llm": self.llm}
-            )
+        #self.smartdataframe = SmartDataframe(
+        #        dataframe,
+        #        config = {"llm": self.llm}
+        #    )
         if self.framework == "LangChain":
             PROMPT = (
                 "If you do not know the answer, say you don't know.\n"
@@ -785,8 +785,8 @@ class DataScience:
                     },
                 #max_iterations = 5
             )
-        elif self.framework == "PandasAI":
-            return self.smartdataframe
+        #elif self.framework == "PandasAI":
+        #    return self.smartdataframe
         
 class PromptEngineering:
     def __init__(self, PROMPT):

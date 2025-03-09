@@ -19,7 +19,7 @@ ds_framework = st.sidebar.selectbox(
     label = "Framework",
     options = [
         "LangChain",
-        "PandasAI"
+        #"PandasAI"
     ]
 )
 st.session_state["ds_framework"] = ds_framework
@@ -76,11 +76,11 @@ if prompt := st.chat_input():
                 config)
             st.session_state["shared_memory"].chat_memory.add_ai_message(response["output"])
             st.write(response["output"])
-        elif ds_framework == "PandasAI":
-            st.session_state["shared_memory"].chat_memory.add_user_message(prompt)
-            response = model.chat(prompt)
-            if type(response) == pd.core.frame.DataFrame:
-                st.session_state["shared_memory"].chat_memory.add_ai_message(response.to_markdown())
-            else:
-                st.session_state["shared_memory"].chat_memory.add_ai_message(response)
-            st.write(response)
+        #elif ds_framework == "PandasAI":
+        #    st.session_state["shared_memory"].chat_memory.add_user_message(prompt)
+        #    response = model.chat(prompt)
+        #    if type(response) == pd.core.frame.DataFrame:
+        #        st.session_state["shared_memory"].chat_memory.add_ai_message(response.to_markdown())
+        #    else:
+        #        st.session_state["shared_memory"].chat_memory.add_ai_message(response)
+        #    st.write(response)
