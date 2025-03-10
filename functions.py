@@ -547,17 +547,17 @@ def store_on_qdrant(_client, _processed_doc, model_name, loader_framework, llm_f
     elif llm_framework == "Google Generative AI":
         embeddings = GoogleGenerativeAIEmbeddings(model = model_name)
     elif llm_framework in ["Groq", "SambaNova"]:
-        embeddings = HuggingFaceEmbeddings(model = "all-MiniLM-L6-v2")
+        embeddings = HuggingFaceEmbeddings(model_name = "all-MiniLM-L6-v2")
     elif llm_framework in ["Scaleway", "OpenAI"]:
         embeddings = OpenAIEmbeddings(model = model_name)
     embedding_vector = embeddings.embed_query("This is a test query")
-    if not _client.collection_exists("document_assistant"):
-        _client.create_collection(
-            collection_name = "document_assistant",
-            vectors_config = VectorParams(
-                size = len(embedding_vector), 
-                distance = Distance.COSINE)
-        )
+    #if not _client.collection_exists("document_assistant"):
+    _client.recreate_collection(
+        collection_name = "document_assistant",
+        vectors_config = VectorParams(
+            size = len(embedding_vector), 
+            distance = Distance.COSINE),
+    )
     #self.qdrant_client.delete_collection("document_assistant")
     vector_store = QdrantVectorStore(
         client = _client,
@@ -841,9 +841,17 @@ class DocumentAssistant:
         lock_file = os.path.join(model_name, ".lock")
         if os.path.exists(lock_file):
             os.remove(lock_file)
-        #self.qdrant_client = QdrantClient(url = "http://localhost:6333") #>>running qdrant on docker
-        self.qdrant_client = QdrantClient(path = self.vector_database_path[vector_database_filter])
-        self.embeddings = OllamaEmbeddings(model = model_name)
+        self.qdrant_client = QdrantClient(url = "http://localhost:6333", timeout = 300) #>>running qdrant on docker
+        #self.qdrant_client = QdrantClient(path = self.vector_database_path[vector_database_filter])
+        if st.session_state["framework"] == "Ollama":
+            self.embeddings = OllamaEmbeddings(model = model_name)
+        elif st.session_state["framework"] == "Google Generative AI":
+            self.embeddings = GoogleGenerativeAIEmbeddings(model = model_name)
+        elif st.session_state["framework"] in ["Groq", "SambaNova"]:
+            self.embeddings = HuggingFaceEmbeddings(model_name = "all-MiniLM-L6-v2")
+        elif st.session_state["framework"] in ["Scaleway", "OpenAI"]:
+            self.embeddings = OpenAIEmbeddings(model = model_name)
+        #self.embeddings = OllamaEmbeddings(model = model_name)
         self.template = """
             You are an assistant for question-answering tasks. 
             Use the following pieces of retrieved context to answer the question. 
